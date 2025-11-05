@@ -5,6 +5,8 @@ import subscriptionRoutes from './subscriptionRoutes.js';
 import serverRoutes from './serverRoutes.js';
 import websiteRoutes from './websiteRoutes.js';
 import dnsRoutes from './dnsRoutes.js';
+import mailboxRoutes from './mailboxRoutes.js';
+import databaseRoutes from './databaseRoutes.js';
 import { metricsEndpoint } from '../middleware/metrics.js';
 
 const router = express.Router();
@@ -31,5 +33,7 @@ router.use('/subscriptions', subscriptionRoutes);
 router.use('/servers', serverRoutes);
 router.use('/websites', websiteRoutes);
 router.use('/dns', dnsRoutes);
+router.use('/mailboxes', mailboxRoutes);
+router.use('/databases', databaseRoutes);
 
 export default router;

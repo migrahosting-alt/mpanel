@@ -4,18 +4,38 @@ A modern, comprehensive control panel for web hosting and billing that replaces 
 
 ## 🚀 Features
 
+### Billing System (WHMCS Replacement)
 - **Multi-Tenant Architecture**: Full tenant isolation for hosting multiple clients
-- **Comprehensive Billing System**: Invoices, payments, tax calculations, and recurring billing
+- **Comprehensive Billing**: Invoices, payments, tax calculations, and recurring billing
 - **Product Management**: Hosting, domains, SSL, email, and custom products
 - **TLD & ICANN Management**: Full domain lifecycle with ICANN fee tracking
-- **Payment Gateway Integration**: Stripe integration with webhook support
-- **Tax Management**: Flexible tax rules based on location
+- **Payment Gateway**: Stripe integration with webhook support
+- **Tax Management**: Location-based tax rules with compound support
 - **Subscription Management**: Recurring billing with automatic renewals
+
+### Hosting Control Panel
+- **Server Management**: Infrastructure nodes with metrics tracking and agent monitoring
+- **Website/Application Management**: WordPress, PHP, Node.js, Python, static sites with SSL
+- **DNS Management**: PowerDNS-compatible zones and records (A, AAAA, CNAME, MX, TXT, SRV, CAA)
+- **Email Management**: Mailboxes with quotas, passwords, and forwarding
+- **Database Management**: PostgreSQL & MySQL with auto-generated connection strings
+- **FTP/SFTP**: Account management with directory permissions
+- **Cron Jobs**: Scheduled tasks per website or server
+- **Backups**: Website, database, and DNS backups with retention policies
+- **Background Jobs**: Asynchronous task queue for provisioning and operations
+
+### User Experience
 - **Modern UI**: React-based frontend with Tailwind CSS and AI-inspired design
+- **Command Palette**: Quick actions and navigation with Ctrl+K / Cmd+K
 - **Real-time Monitoring**: Prometheus metrics and Grafana dashboards
 - **Centralized Logging**: Loki integration for log aggregation
+- **Smart Suggestions**: Dashboard intelligence for renewals, resources, and recommendations
+
+### Infrastructure
 - **Secure Storage**: MinIO/S3 for client assets and backups
 - **Secrets Management**: Support for Vault or encrypted .env files
+- **Role-Based Access**: Owner, Admin, Support, Client roles with permissions
+- **Audit Logging**: Complete activity tracking across all operations
 
 ## 🛠 Technology Stack
 
