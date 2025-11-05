@@ -4,6 +4,9 @@ import Dashboard from './pages/Dashboard';
 import Products from './pages/Products';
 import Invoices from './pages/Invoices';
 import Subscriptions from './pages/Subscriptions';
+import Servers from './pages/Servers';
+import Websites from './pages/Websites';
+import DNS from './pages/DNS';
 import Layout from './components/Layout';
 
 function App() {
@@ -11,6 +14,9 @@ function App() {
     <Layout>
       <Routes>
         <Route path="/" element={<Dashboard />} />
+        <Route path="/servers" element={<Servers />} />
+        <Route path="/websites" element={<Websites />} />
+        <Route path="/dns" element={<DNS />} />
         <Route path="/products" element={<Products />} />
         <Route path="/invoices" element={<Invoices />} />
         <Route path="/subscriptions" element={<Subscriptions />} />

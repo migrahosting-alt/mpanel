@@ -13,10 +13,17 @@ async function runMigration() {
   try {
     logger.info('Starting database migration...');
     
+    // Run base billing schema
     const schemaPath = path.join(__dirname, 'schema.sql');
     const schema = fs.readFileSync(schemaPath, 'utf8');
-    
     await client.query(schema);
+    logger.info('Base schema migrated');
+    
+    // Run hosting/control panel schema
+    const hostingSchemaPath = path.join(__dirname, 'schema-hosting.sql');
+    const hostingSchema = fs.readFileSync(hostingSchemaPath, 'utf8');
+    await client.query(hostingSchema);
+    logger.info('Hosting schema migrated');
     
     logger.info('Database migration completed successfully');
     
