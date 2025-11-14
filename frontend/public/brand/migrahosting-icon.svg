@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="-24 -24 304 304" role="img" aria-label="MigraHosting icon">
+  <defs>
+    <linearGradient id="mh-grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6A5CFF"></stop>
+      <stop offset="0.6" stop-color="#8A4DFF"></stop>
+      <stop offset="1" stop-color="#FF6584"></stop>
+    </linearGradient>
+  </defs>
+  <circle cx="128" cy="128" r="104" fill="url(#mh-grad)"></circle>
+  <path fill="#fff" d="M84 176V96h20l24 38 24-38h20v80h-18v-47l-26 41h-2l-26-41v47H84z"></path>
+</svg>

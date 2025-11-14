@@ -1,0 +1,21 @@
+{
+  "controlPanel": {
+    "url": "http://localhost:3000",
+    "apiKey": "your_agent_api_key_here"
+  },
+  "agent": {
+    "reportInterval": 60,
+    "hostname": null,
+    "agentId": null,
+    "enabledCollectors": [
+      "cpu",
+      "memory",
+      "disk",
+      "network"
+    ]
+  },
+  "logging": {
+    "level": "info",
+    "file": null
+  }
+}
