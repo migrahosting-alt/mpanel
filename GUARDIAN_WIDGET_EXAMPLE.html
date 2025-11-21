@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MigraHosting - Guardian AI Support Widget Example</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    
+    .container {
+      max-width: 1200px;
+      width: 100%;
+      background: white;
+      border-radius: 20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+    
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 60px 40px;
+      text-align: center;
+    }
+    
+    .header h1 {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+    }
+    
+    .header p {
+      font-size: 1.25rem;
+      opacity: 0.95;
+    }
+    
+    .content {
+      padding: 60px 40px;
+    }
+    
+    .section {
+      margin-bottom: 40px;
+    }
+    
+    .section h2 {
+      font-size: 2rem;
+      color: #333;
+      margin-bottom: 20px;
+    }
+    
+    .code-block {
+      background: #2d3748;
+      color: #e2e8f0;
+      padding: 25px;
+      border-radius: 10px;
+      overflow-x: auto;
+      font-family: 'Monaco', 'Courier New', monospace;
+      font-size: 0.9rem;
+      line-height: 1.6;
+    }
+    
+    .code-block .comment {
+      color: #68d391;
+    }
+    
+    .code-block .tag {
+      color: #63b3ed;
+    }
+    
+    .code-block .attr {
+      color: #f6ad55;
+    }
+    
+    .code-block .string {
+      color: #fc8181;
+    }
+    
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      margin-top: 30px;
+    }
+    
+    .feature-card {
+      background: #f7fafc;
+      padding: 30px;
+      border-radius: 10px;
+      border-left: 4px solid #667eea;
+    }
+    
+    .feature-card h3 {
+      color: #667eea;
+      margin-bottom: 10px;
+      font-size: 1.25rem;
+    }
+    
+    .feature-card p {
+      color: #4a5568;
+      line-height: 1.6;
+    }
+    
+    .cta {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 15px 40px;
+      border-radius: 50px;
+      border: none;
+      font-size: 1.1rem;
+      font-weight: bold;
+      cursor: pointer;
+      transition: transform 0.2s;
+      margin-top: 20px;
+    }
+    
+    .cta:hover {
+      transform: scale(1.05);
+    }
+    
+    .note {
+      background: #fef5e7;
+      border-left: 4px solid #f39c12;
+      padding: 20px;
+      margin: 30px 0;
+      border-radius: 5px;
+    }
+    
+    .note strong {
+      color: #e67e22;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🤖 Guardian AI Support Widget</h1>
+      <p>Add AI-powered customer support to your website in 2 minutes</p>
+    </div>
+    
+    <div class="content">
+      <!-- Installation Section -->
+      <div class="section">
+        <h2>📦 Installation (Copy & Paste)</h2>
+        <p style="margin-bottom: 20px; color: #666;">
+          Add this code snippet to your website's HTML, just before the closing <code>&lt;/body&gt;</code> tag:
+        </p>
+        
+        <div class="code-block">
+<span class="comment">&lt;!-- Guardian AI Widget --&gt;</span>
+<span class="tag">&lt;script&gt;</span>
+  <span class="attr">window.MigraGuardianConfig</span> = {
+    <span class="attr">token</span>: <span class="string">'guardian_YOUR_TOKEN_HERE'</span>, <span class="comment">// Get this from mPanel admin</span>
+    <span class="attr">gatewayUrl</span>: <span class="string">'https://guardian.migrahosting.com'</span>,
+    <span class="attr">title</span>: <span class="string">'Need Help?'</span>,
+    <span class="attr">subtitle</span>: <span class="string">'Ask our AI assistant anything!'</span>,
+    <span class="attr">primaryColor</span>: <span class="string">'#667eea'</span>,
+    <span class="attr">assistantName</span>: <span class="string">'Abigail'</span>,
+    <span class="attr">avatarUrl</span>: <span class="string">'https://your-cdn.com/avatar.png'</span>, <span class="comment">// Optional</span>
+    <span class="attr">enableVoice</span>: <span class="string">true</span> <span class="comment">// Professional/Enterprise only</span>
+  };
+<span class="tag">&lt;/script&gt;</span>
+<span class="tag">&lt;script</span> <span class="attr">src</span>=<span class="string">"https://migrapanel.com/guardian/widget.js"</span> <span class="attr">async</span><span class="tag">&gt;&lt;/script&gt;</span>
+        </div>
+        
+        <div class="note">
+          <strong>⚠️ Important:</strong> Replace <code>guardian_YOUR_TOKEN_HERE</code> with your actual widget token from the mPanel admin dashboard at <code>/admin/guardian</code>
+        </div>
+      </div>
+      
+      <!-- Features Section -->
+      <div class="section">
+        <h2>✨ Features</h2>
+        <div class="feature-grid">
+          <div class="feature-card">
+            <h3>🎨 Customizable Branding</h3>
+            <p>Match your brand colors, logo, and messaging. White-label option available on Enterprise.</p>
+          </div>
+          
+          <div class="feature-card">
+            <h3>🧠 AI-Powered</h3>
+            <p>Uses GPT-4o-mini for intelligent, context-aware responses to customer questions.</p>
+          </div>
+          
+          <div class="feature-card">
+            <h3>🔧 Integrated Tools</h3>
+            <p>Access DNS records, user data, backups, and more - all through natural language.</p>
+          </div>
+          
+          <div class="feature-card">
+            <h3>🎤 Voice Input</h3>
+            <p>Let customers speak their questions (Professional & Enterprise plans).</p>
+          </div>
+          
+          <div class="feature-card">
+            <h3>📊 Analytics Dashboard</h3>
+            <p>Track conversations, satisfaction ratings, and support costs in real-time.</p>
+          </div>
+          
+          <div class="feature-card">
+            <h3>⚡ Zero Dependencies</h3>
+            <p>12KB JavaScript file, no frameworks required. Works on any website.</p>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Configuration Options -->
+      <div class="section">
+        <h2>⚙️ Configuration Options</h2>
+        <div class="code-block">
+<span class="attr">window.MigraGuardianConfig</span> = {
+  <span class="comment">// Required</span>
+  <span class="attr">token</span>: <span class="string">'guardian_...'</span>,        <span class="comment">// Your unique widget token</span>
+  <span class="attr">gatewayUrl</span>: <span class="string">'https://...'</span>,    <span class="comment">// Guardian API gateway URL</span>
+  
+  <span class="comment">// Optional branding</span>
+  <span class="attr">title</span>: <span class="string">'Support'</span>,             <span class="comment">// Chat window title</span>
+  <span class="attr">subtitle</span>: <span class="string">'How can we help?'</span>, <span class="comment">// Chat window subtitle</span>
+  <span class="attr">primaryColor</span>: <span class="string">'#0066cc'</span>,      <span class="comment">// Brand color (hex)</span>
+  <span class="attr">assistantName</span>: <span class="string">'Abigail'</span>,     <span class="comment">// AI assistant name</span>
+  <span class="attr">avatarUrl</span>: <span class="string">'https://...'</span>,     <span class="comment">// Custom avatar image</span>
+  
+  <span class="comment">// Optional features</span>
+  <span class="attr">enableVoice</span>: <span class="string">true</span>,           <span class="comment">// Enable voice input (Pro/Enterprise)</span>
+  <span class="attr">position</span>: <span class="string">'bottom-right'</span>,    <span class="comment">// Widget position</span>
+  <span class="attr">greeting</span>: <span class="string">'Hi! How can I help?'</span> <span class="comment">// Initial message</span>
+};
+        </div>
+      </div>
+      
+      <!-- JavaScript API -->
+      <div class="section">
+        <h2>🔌 JavaScript API</h2>
+        <p style="margin-bottom: 20px; color: #666;">
+          Control the widget programmatically from your JavaScript code:
+        </p>
+        
+        <div class="code-block">
+<span class="comment">// Open the chat widget</span>
+<span class="attr">window.MigraGuardian</span>.open();
+
+<span class="comment">// Close the chat widget</span>
+<span class="attr">window.MigraGuardian</span>.close();
+
+<span class="comment">// Send a message programmatically</span>
+<span class="attr">window.MigraGuardian</span>.sendMessage(<span class="string">'What are my DNS records?'</span>);
+
+<span class="comment">// Example: Open chat on button click</span>
+<span class="tag">document</span>.querySelector(<span class="string">'#help-button'</span>).addEventListener(<span class="string">'click'</span>, () => {
+  <span class="attr">window.MigraGuardian</span>.open();
+  <span class="attr">window.MigraGuardian</span>.sendMessage(<span class="string">'I need help with my account'</span>);
+});
+        </div>
+      </div>
+      
+      <!-- Live Demo -->
+      <div class="section" style="text-align: center;">
+        <h2>🚀 Try It Now</h2>
+        <p style="margin-bottom: 20px; color: #666;">
+          Click the button below to interact with the Guardian AI widget on this page!
+        </p>
+        <button class="cta" onclick="openGuardianDemo()">
+          Chat with Abigail (Demo)
+        </button>
+      </div>
+      
+      <!-- Next Steps -->
+      <div class="section">
+        <h2>📋 Getting Your Widget Token</h2>
+        <ol style="line-height: 2; color: #555; font-size: 1.1rem;">
+          <li>Log into your <strong>mPanel admin dashboard</strong></li>
+          <li>Navigate to <strong>Admin → Guardian Management</strong> (<code>/admin/guardian</code>)</li>
+          <li>Click <strong>"+ Create Instance"</strong></li>
+          <li>Fill in your configuration and click <strong>"Create"</strong></li>
+          <li>Click <strong>"Copy Embed Code"</strong> to get the full widget snippet</li>
+          <li>Paste the code into your website's HTML</li>
+          <li>Done! 🎉</li>
+        </ol>
+        
+        <div class="note">
+          <strong>💡 Pro Tip:</strong> Each instance has its own unique token. You can create multiple instances for different websites or departments, each with its own branding and configuration.
+        </div>
+      </div>
+      
+      <!-- Pricing Tiers -->
+      <div class="section">
+        <h2>💰 Pricing Tiers</h2>
+        <div class="feature-grid">
+          <div class="feature-card" style="border-left-color: #48bb78;">
+            <h3 style="color: #48bb78;">Starter - $29.99/mo</h3>
+            <ul style="margin-top: 10px; color: #4a5568; line-height: 1.8;">
+              <li>✓ 1,000 messages/month</li>
+              <li>✓ Basic DNS & user tools</li>
+              <li>✓ Email support</li>
+              <li>✓ Standard branding</li>
+            </ul>
+          </div>
+          
+          <div class="feature-card" style="border-left-color: #667eea;">
+            <h3 style="color: #667eea;">Professional - $79.99/mo</h3>
+            <ul style="margin-top: 10px; color: #4a5568; line-height: 1.8;">
+              <li>✓ 5,000 messages/month</li>
+              <li>✓ All tools + backups</li>
+              <li>✓ Voice input enabled</li>
+              <li>✓ Custom branding</li>
+              <li>✓ Priority support</li>
+            </ul>
+          </div>
+          
+          <div class="feature-card" style="border-left-color: #f39c12;">
+            <h3 style="color: #f39c12;">Enterprise - $199.99/mo</h3>
+            <ul style="margin-top: 10px; color: #4a5568; line-height: 1.8;">
+              <li>✓ Unlimited messages</li>
+              <li>✓ All features</li>
+              <li>✓ White-label option</li>
+              <li>✓ Custom integrations</li>
+              <li>✓ Dedicated support manager</li>
+              <li>✓ SLA guarantee</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Guardian Widget Demo (using localhost for development) -->
+  <script>
+    window.MigraGuardianConfig = {
+      token: 'demo.token', // This is a demo token
+      gatewayUrl: 'http://localhost:8080',
+      title: 'MigraHosting Support',
+      subtitle: 'Ask Abigail anything about hosting!',
+      primaryColor: '#667eea',
+      assistantName: 'Abigail',
+      enableVoice: false // Set to true if you have voice enabled
+    };
+    
+    function openGuardianDemo() {
+      if (window.MigraGuardian) {
+        window.MigraGuardian.open();
+        setTimeout(() => {
+          window.MigraGuardian.sendMessage('Hello! What can you help me with?');
+        }, 500);
+      } else {
+        alert('Guardian widget is loading... Please try again in a moment.');
+      }
+    }
+  </script>
+  
+  <!-- Load the actual Guardian widget -->
+  <script src="http://localhost:2271/guardian/widget.js" async></script>
+  
+  <!-- Production URL (use this when deploying): -->
+  <!-- <script src="https://migrapanel.com/guardian/widget.js" async></script> -->
+</body>
+</html>

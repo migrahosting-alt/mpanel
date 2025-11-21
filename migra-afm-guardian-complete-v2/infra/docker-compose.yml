@@ -1,0 +1,45 @@
+version: "3.9"
+services:
+  gateway:
+    build: ../services/gateway
+    environment:
+      - ORCH_URL=http://orchestrator:8090
+      - JWT_PUBLIC_KEY=${JWT_PUBLIC_KEY}
+    ports:
+      - "8080:8080"
+    depends_on:
+      - orchestrator
+
+  orchestrator:
+    build: ../services/orchestrator
+    environment:
+      - ADAPTERS_URL=http://adapters:8095
+      - LLM_API_KEY=${LLM_API_KEY}
+      - LLM_MODEL=${LLM_MODEL}
+      - LLM_API_URL=${LLM_API_URL}
+    ports:
+      - "8090:8090"
+    depends_on:
+      - adapters
+
+  adapters:
+    build: ../services/adapters
+    environment:
+      - PDNS_API_URL=${PDNS_API_URL}
+      - PDNS_API_KEY=${PDNS_API_KEY}
+      - PDNS_SERVER_ID=${PDNS_SERVER_ID}
+      - BACKUPS_BASE=${BACKUPS_BASE}
+      - MPANEL_API_URL=${MPANEL_API_URL}
+    ports:
+      - "8095:8095"
+
+  mock-mpanel:
+    image: node:20-alpine
+    working_dir: /app
+    command: node mock-mpanel.js
+    volumes:
+      - ../mock-mpanel.js:/app/mock-mpanel.js
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001

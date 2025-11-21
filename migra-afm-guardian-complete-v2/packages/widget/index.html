@@ -1,0 +1,63 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Migra AFM Guardian — Chat Demo</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <style>
+      body{font-family:system-ui,Arial,sans-serif;margin:20px;background:#020617;color:#e5e7eb}
+      #log{border:1px solid #334155;padding:12px;border-radius:8px;height:260px;overflow:auto;white-space:pre-wrap;background:#020617}
+      input,button,select{padding:8px;margin:4px;border-radius:6px;border:1px solid #334155;background:#020617;color:#e5e7eb}
+      button{cursor:pointer}
+      .row{display:flex;gap:8px;flex-wrap:wrap}
+    </style>
+  </head>
+  <body>
+    <h1>Migra AFM Guardian — Abigail Test Console</h1>
+    <p>Gateway: <code>http://localhost:8080/chat</code></p>
+    <div class="row">
+      <select id="mode">
+        <option value="auto">Auto (LLM)</option>
+        <option value="manual_dns">Manual: dns_list_records</option>
+        <option value="manual_user">Manual: user_get_summary</option>
+        <option value="manual_backups">Manual: backups_list</option>
+      </select>
+      <input id="input" placeholder="Ask a question or type domain/email..." style="flex:1" />
+      <button id="send">Send</button>
+    </div>
+    <div id="log"></div>
+    <script>
+      const log = (m)=>{
+        const el=document.getElementById('log');
+        el.textContent += m + '\n';
+        el.scrollTop = el.scrollHeight;
+      };
+      document.getElementById('send').onclick = async () => {
+        const mode = (document.getElementById('mode')).value;
+        const text = (document.getElementById('input')).value;
+        if(!text.trim()) return;
+        (document.getElementById('input')).value = "";
+        log('> ' + text);
+        const token = 'Bearer demo.token';
+        let body = {};
+        if(mode === 'auto'){
+          body = { message: text };
+        } else {
+          let name = 'dns_list_records';
+          let input = {};
+          if(mode === 'manual_dns'){ name='dns_list_records'; input={zone:text}; }
+          if(mode === 'manual_user'){ name='user_get_summary'; input={query:text}; }
+          if(mode === 'manual_backups'){ name='backups_list'; input={domain:text}; }
+          body = { toolCall:{ name, input, actor:{ userId:'demo', roles:['support'], scopes:['support.read'] } } };
+        }
+        const res = await fetch('http://localhost:8080/chat',{
+          method:'POST',
+          headers:{'content-type':'application/json','authorization':token},
+          body:JSON.stringify(body)
+        });
+        const data = await res.json();
+        log('< ' + JSON.stringify(data, null, 2));
+      };
+    </script>
+  </body>
+</html>

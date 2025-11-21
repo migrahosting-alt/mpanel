@@ -1,0 +1,353 @@
+import express from "express";
+import morgan from "morgan";
+import cors from "cors";
+import dotenv from "dotenv";
+import fetch from "node-fetch";
+import { z } from "zod";
+import { decideToolWithLLM, DecidedTool } from "./llmRouter";
+import { randomUUID } from "crypto";
+
+dotenv.config();
+
+const app = express();
+app.use(cors());
+app.use(express.json({ limit: "1mb" }));
+app.use(morgan("dev"));
+
+const ADAPTERS_URL = process.env.ADAPTERS_URL || "http://adapters:8095";
+
+// ============================================================================
+// Structured Logger
+// ============================================================================
+
+type LogLevel = "info" | "warn" | "error" | "debug";
+
+function log(level: LogLevel, message: string, meta?: Record<string, any>) {
+  const entry = {
+    timestamp: new Date().toISOString(),
+    service: "orchestrator",
+    level,
+    msg: message,
+    ...meta,
+  };
+  console.log(JSON.stringify(entry));
+}
+
+// ============================================================================
+// Fetch with Timeout Helper
+// ============================================================================
+
+class ToolError extends Error {
+  constructor(
+    message: string,
+    public statusCode: number,
+    public errorCode: string,
+    public detail?: string
+  ) {
+    super(message);
+    this.name = "ToolError";
+  }
+}
+
+async function fetchWithTimeout(
+  url: string,
+  options: any = {},
+  timeoutMs: number = 10000
+): Promise<any> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    // Always parse JSON first to get error details
+    const data = await response.json();
+
+    // Check HTTP status
+    if (!response.ok) {
+      log("error", `HTTP ${response.status} from ${url}`, {
+        status: response.status,
+        error: data.error,
+        detail: data.detail,
+      });
+      throw new ToolError(
+        `Adapter returned ${response.status}`,
+        response.status,
+        data.error || "adapter_error",
+        data.detail
+      );
+    }
+
+    return data;
+  } catch (e: any) {
+    clearTimeout(timeout);
+    
+    if (e.name === "AbortError") {
+      throw new ToolError(
+        `Request to ${url} timed out after ${timeoutMs}ms`,
+        504,
+        "timeout",
+        "Adapter request timed out"
+      );
+    }
+    
+    // Re-throw ToolError as-is
+    if (e instanceof ToolError) {
+      throw e;
+    }
+    
+    // Network or JSON parse errors
+    throw new ToolError(
+      `Failed to fetch from ${url}: ${e.message}`,
+      502,
+      "network_error",
+      e.message
+    );
+  }
+}
+
+// ============================================================================
+// Schemas
+// ============================================================================
+
+// ============================================================================
+// Schemas
+// ============================================================================
+
+const Actor = z.object({
+  userId: z.string(),
+  roles: z.array(z.string()).default([]),
+  scopes: z.array(z.string()).default([]),
+});
+
+const ToolCallSchema = z.object({
+  name: z.string(),
+  input: z.record(z.any()).default({}),
+  actor: Actor.optional(),
+});
+
+const ChatMessageSchema = z.object({
+  from: z.enum(["user", "afm"]),
+  text: z.string(),
+});
+
+const ChatRequestSchema = z.object({
+  message: z.string().optional(),
+  toolCall: ToolCallSchema.optional(),
+  history: z.array(ChatMessageSchema).optional(),
+  actor: Actor.optional(),
+});
+
+// ============================================================================
+// Tool Registry
+// ============================================================================
+
+type ToolHandlerCtx = { 
+  actor: z.infer<typeof Actor> | undefined;
+  requestId: string;
+};
+type ToolHandler = (input: any, ctx: ToolHandlerCtx) => Promise<any>;
+
+type Tool = {
+  name: string;
+  schema: z.ZodTypeAny;
+  handler: ToolHandler;
+};
+
+const registry = new Map<string, Tool>();
+
+function registerTool(tool: Tool) {
+  registry.set(tool.name, tool);
+}
+
+registerTool({
+  name: "dns_list_records",
+  schema: z.object({ zone: z.string().min(1) }),
+  handler: async (input, ctx) => {
+    log("info", `Calling dns_list_records`, { 
+      requestId: ctx.requestId, 
+      zone: input.zone 
+    });
+    
+    const data = await fetchWithTimeout(
+      `${ADAPTERS_URL}/dns/${encodeURIComponent(input.zone)}/records`
+    );
+    
+    log("info", `DNS records fetched`, { 
+      requestId: ctx.requestId, 
+      recordCount: data.records?.length || 0 
+    });
+    return data;
+  },
+});
+
+registerTool({
+  name: "user_get_summary",
+  schema: z.object({ query: z.string().min(1) }),
+  handler: async (input, ctx) => {
+    log("info", `Calling user_get_summary`, { 
+      requestId: ctx.requestId, 
+      query: input.query 
+    });
+    
+    const data = await fetchWithTimeout(
+      `${ADAPTERS_URL}/user/summary?q=${encodeURIComponent(input.query)}`
+    );
+    
+    log("info", `User summary fetched`, { 
+      requestId: ctx.requestId, 
+      email: data.user?.email 
+    });
+    return data;
+  },
+});
+
+registerTool({
+  name: "backups_list",
+  schema: z.object({ domain: z.string().min(1) }),
+  handler: async (input, ctx) => {
+    log("info", `Calling backups_list`, { 
+      requestId: ctx.requestId, 
+      domain: input.domain 
+    });
+    
+    const data = await fetchWithTimeout(
+      `${ADAPTERS_URL}/backups/${encodeURIComponent(input.domain)}`
+    );
+    
+    log("info", `Backups fetched`, { 
+      requestId: ctx.requestId, 
+      backupCount: data.backups?.length || 0 
+    });
+    return data;
+  },
+});
+
+// ============================================================================
+// Reply Rendering
+// ============================================================================
+
+function renderReply(call: any, result: any): string {
+  if (call.name === "dns_list_records" && result?.records) {
+    const rows = result.records.map((r: any) => `${r.name}  ${r.type}  ${r.value}`).join("\n");
+    return `I found ${result.records.length} DNS records for ${result.zone}:
+` + rows;
+  }
+  if (call.name === "user_get_summary" && result?.user) {
+    const u = result.user;
+    return [
+      `Here’s what I see for ${u.email}:`,
+      `Plans: ${(u.plans || []).join(", ") || "none"}`,
+      `Invoices: ${u.invoices}`,
+      `Open tickets: ${u.tickets}`,
+    ].join("\n");
+  }
+  if (call.name === "backups_list") {
+    // Handle error responses from adapters
+    if (result?.ok === false) {
+      const errorMessages: Record<string, string> = {
+        invalid_domain: "That doesn't look like a valid domain name.",
+        timeout: "The request took too long. Please try again.",
+        permission_denied: "I don't have permission to access that resource.",
+      };
+      return errorMessages[result.error] || `Sorry, I encountered an error: ${result.detail || result.error}`;
+    }
+    
+    if (!result?.backups || result.backups.length === 0) {
+      return `No backups found for ${result?.domain || "this domain"}. ${result?.message || ""}`;
+    }
+    
+    const formatDate = (isoDate: string) => {
+      const date = new Date(isoDate);
+      return date.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+    };
+    
+    const rows = result.backups.slice(0, 10).map((b: any) => {
+      const fileName = b.file.split("/").pop() || b.file;
+      const date = b.created_at ? formatDate(b.created_at) : "Unknown date";
+      return `• ${fileName} (${b.size_mb} MB) - ${date}`;
+    }).join("\n");
+    
+    const total = result.backups.length;
+    const showing = Math.min(total, 10);
+    const header = `I found ${total} backup${total !== 1 ? "s" : ""} for ${result.domain}${total > 10 ? " (showing latest 10)" : ""}:`;
+    return `${header}\n${rows}`;
+  }
+  return "OK, I executed the tool.";
+}
+
+app.get("/health", (_req, res) => {
+  res.json({ ok: true, service: "orchestrator", env: process.env.NODE_ENV || "dev" });
+});
+
+app.post("/chat", async (req, res) => {
+  try {
+    const payload = ChatRequestSchema.parse(req.body);
+    const actor = payload.actor;
+
+    if (payload.toolCall) {
+      const call = ToolCallSchema.parse(payload.toolCall);
+      const tool = registry.get(call.name);
+      if (!tool) return res.status(400).json({ ok: false, error: "unknown_tool" });
+
+      const validated = tool.schema.parse(call.input);
+      const result = await tool.handler(validated, { actor });
+      const reply = renderReply(call, result);
+
+      return res.json({
+        ok: true,
+        mode: "tool_direct",
+        reply,
+        toolCall: { ...call, input: validated },
+        toolResult: result,
+      });
+    }
+
+    if (payload.message) {
+      const history = payload.history || [];
+      const decision: DecidedTool = await decideToolWithLLM(
+        payload.message,
+        history as any
+      );
+      if (!decision) {
+        return res.json({
+          ok: true,
+          mode: "chat_only",
+          reply:
+            "Mwen la pou tcheke DNS, backup, ak rezime kliyan. Egzanp: “Check DNS pou migrahosting.com.”",
+        });
+      }
+      const tool = registry.get(decision.name);
+      if (!tool) return res.status(400).json({ ok: false, error: "unknown_tool" });
+
+      const validated = tool.schema.parse(decision.input);
+      const result = await tool.handler(validated, { actor });
+      const reply = renderReply({ name: decision.name }, result);
+
+      return res.json({
+        ok: true,
+        mode: "tool_auto",
+        reply,
+        decidedTool: {
+          name: decision.name,
+          input: validated,
+        },
+        toolResult: result,
+      });
+    }
+
+    return res.status(400).json({ ok: false, error: "empty_request" });
+  } catch (e: any) {
+    console.error("[orchestrator] error:", e);
+    res.status(400).json({ ok: false, error: e?.message || "bad_request" });
+  }
+});
+
+const port = process.env.PORT || 8090;
+app.listen(port, () => {
+  console.log(`[AFM] orchestrator listening on :${port}`);
+});

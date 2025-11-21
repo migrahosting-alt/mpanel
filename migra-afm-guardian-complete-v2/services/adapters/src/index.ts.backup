@@ -1,0 +1,291 @@
+import express from "express";
+import morgan from "morgan";
+import cors from "cors";
+import dotenv from "dotenv";
+import fetch from "node-fetch";
+import { promises as fs } from "fs";
+import path from "path";
+
+dotenv.config();
+
+const app = express();
+app.use(cors());
+app.use(express.json({ limit: "1mb" }));
+app.use(morgan("dev"));
+
+const PDNS_API_URL = process.env.PDNS_API_URL;
+const PDNS_API_KEY = process.env.PDNS_API_KEY;
+const PDNS_SERVER_ID = process.env.PDNS_SERVER_ID || "localhost";
+const BACKUPS_BASE = process.env.BACKUPS_BASE;
+
+app.get("/health", (_req, res) => {
+  res.json({ ok: true, service: "adapters", env: process.env.NODE_ENV || "dev" });
+});
+
+app.get("/dns/:zone/records", async (req, res) => {
+  const zone = req.params.zone;
+  
+  // Validate zone parameter
+  if (!zone || typeof zone !== "string") {
+    return res.status(400).json({
+      ok: false,
+      error: "invalid_zone",
+      detail: "Zone parameter is required and must be a valid string",
+    });
+  }
+
+  // Check if PowerDNS is configured
+  if (!PDNS_API_URL || !PDNS_API_KEY) {
+    console.warn("[adapters] PowerDNS not configured, returning stub data");
+    return res.json({
+      ok: true,
+      zone,
+      records: [
+        { name: "cp", type: "A", value: "31.220.98.95", ttl: 300 },
+        { name: "mail", type: "A", value: "154.38.180.61", ttl: 300 },
+        { name: "@", type: "MX", value: "mail.migrahosting.com", ttl: 300 },
+      ],
+    });
+  }
+
+  try {
+    // Ensure zone ends with a dot for PowerDNS API
+    const pdnsZone = zone.endsWith(".") ? zone : `${zone}.`;
+    const url = `${PDNS_API_URL}/servers/${PDNS_SERVER_ID}/zones/${encodeURIComponent(pdnsZone)}`;
+
+    console.log(`[adapters] Fetching DNS records for zone: ${pdnsZone}`);
+
+    // Create abort controller for timeout
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "X-API-Key": PDNS_API_KEY,
+        "Accept": "application/json",
+      },
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    // Handle non-200 responses
+    if (!response.ok) {
+      if (response.status === 404) {
+        console.error(`[adapters] Zone not found: ${pdnsZone}`);
+        return res.status(404).json({
+          ok: false,
+          error: "zone_not_found",
+          detail: `Zone '${zone}' does not exist in PowerDNS`,
+        });
+      }
+
+      if (response.status === 401 || response.status === 403) {
+        console.error(`[adapters] PowerDNS authentication failed: ${response.status}`);
+        return res.status(500).json({
+          ok: false,
+          error: "pdns_auth_error",
+          detail: "PowerDNS authentication failed. Check PDNS_API_KEY.",
+        });
+      }
+
+      const errorText = await response.text();
+      console.error(`[adapters] PowerDNS error ${response.status}:`, errorText);
+      return res.status(502).json({
+        ok: false,
+        error: "pdns_error",
+        detail: `PowerDNS returned status ${response.status}`,
+      });
+    }
+
+    const data: any = await response.json();
+
+    // Map PowerDNS RRsets to orchestrator format
+    const records = (data.rrsets || []).flatMap((rrset: any) => {
+      const { name, type, ttl, records: pdnsRecords } = rrset;
+      
+      return (pdnsRecords || []).map((record: any) => {
+        const mapped: any = {
+          name: name.replace(`.${pdnsZone}`, "") || "@", // Strip zone suffix
+          type: type,
+          value: record.content,
+          ttl: ttl || 300,
+        };
+
+        // Include priority for MX records
+        if (type === "MX" && record.priority !== undefined) {
+          mapped.priority = record.priority;
+        }
+
+        return mapped;
+      });
+    });
+
+    console.log(`[adapters] Successfully fetched ${records.length} DNS records for ${zone}`);
+
+    res.json({
+      ok: true,
+      zone,
+      records,
+    });
+
+  } catch (e: any) {
+    if (e.name === "AbortError") {
+      console.error(`[adapters] PowerDNS request timeout for zone: ${zone}`);
+      return res.status(504).json({
+        ok: false,
+        error: "pdns_timeout",
+        detail: "PowerDNS API request timed out after 10 seconds",
+      });
+    }
+
+    console.error(`[adapters] Error fetching DNS records for ${zone}:`, e);
+    res.status(500).json({
+      ok: false,
+      error: "internal_error",
+      detail: e?.message || "Failed to fetch DNS records",
+    });
+  }
+});
+
+app.get("/user/summary", (req, res) => {
+  const q = String(req.query.q || "");
+  res.json({
+    ok: true,
+    query: q,
+    user: {
+      email: q || "client@example.com",
+      plans: ["Web Hosting Premium"],
+      invoices: 5,
+      tickets: 1,
+    },
+  });
+});
+
+app.get("/backups/:domain", async (req, res) => {
+  const domain = req.params.domain;
+
+  // Validate domain parameter
+  if (!domain || typeof domain !== "string") {
+    return res.status(400).json({
+      ok: false,
+      error: "invalid_domain",
+      detail: "Domain parameter is required and must be a valid string",
+    });
+  }
+
+  // Sanitize domain to prevent directory traversal
+  const sanitizedDomain = domain.replace(/[^a-zA-Z0-9.-]/g, "");
+  if (sanitizedDomain !== domain || domain.includes("..")) {
+    return res.status(400).json({
+      ok: false,
+      error: "invalid_domain",
+      detail: "Domain contains invalid characters",
+    });
+  }
+
+  // Check if backups are configured
+  if (!BACKUPS_BASE) {
+    console.warn("[adapters] BACKUPS_BASE not configured, returning stub data");
+    return res.json({
+      ok: true,
+      domain,
+      backups: [
+        { file: `/srv1/clients/${domain}/2025-11-10.tar.gz`, size_mb: 512, created_at: "2025-11-10T00:00:00Z" },
+        { file: `/srv1/clients/${domain}/2025-11-09.tar.gz`, size_mb: 490, created_at: "2025-11-09T00:00:00Z" },
+      ],
+    });
+  }
+
+  try {
+    const backupDir = path.join(BACKUPS_BASE, sanitizedDomain);
+    console.log(`[adapters] Scanning backups for domain: ${domain} in ${backupDir}`);
+
+    // Check if directory exists
+    try {
+      await fs.access(backupDir);
+    } catch (e) {
+      console.warn(`[adapters] Backup directory not found: ${backupDir}`);
+      return res.json({
+        ok: true,
+        domain,
+        backups: [],
+        message: "No backup directory found for this domain",
+      });
+    }
+
+    // Read directory contents
+    const files = await fs.readdir(backupDir);
+
+    // Filter for backup files (common extensions)
+    const backupExtensions = [".tar.gz", ".tgz", ".zip", ".tar", ".sql.gz", ".sql"];
+    const backupFiles = files.filter((file) =>
+      backupExtensions.some((ext) => file.toLowerCase().endsWith(ext))
+    );
+
+    if (backupFiles.length === 0) {
+      console.warn(`[adapters] No backup files found in ${backupDir}`);
+      return res.json({
+        ok: true,
+        domain,
+        backups: [],
+        message: "No backup files found in directory",
+      });
+    }
+
+    // Get file stats for each backup
+    const backups = await Promise.all(
+      backupFiles.map(async (file) => {
+        const filePath = path.join(backupDir, file);
+        try {
+          const stats = await fs.stat(filePath);
+          return {
+            file: filePath,
+            size_mb: Math.round((stats.size / (1024 * 1024)) * 100) / 100, // Round to 2 decimals
+            created_at: stats.birthtime.toISOString(),
+          };
+        } catch (e: any) {
+          console.error(`[adapters] Error reading file stats for ${filePath}:`, e);
+          return null;
+        }
+      })
+    );
+
+    // Filter out any failed stat reads and sort by creation date (newest first)
+    const validBackups = backups
+      .filter((b) => b !== null)
+      .sort((a, b) => new Date(b!.created_at).getTime() - new Date(a!.created_at).getTime());
+
+    console.log(`[adapters] Found ${validBackups.length} backup files for ${domain}`);
+
+    res.json({
+      ok: true,
+      domain,
+      backups: validBackups,
+    });
+
+  } catch (e: any) {
+    console.error(`[adapters] Error scanning backups for ${domain}:`, e);
+    
+    // Check for permission errors
+    if (e.code === "EACCES") {
+      return res.status(500).json({
+        ok: false,
+        error: "permission_denied",
+        detail: "Permission denied accessing backup directory",
+      });
+    }
+
+    res.status(500).json({
+      ok: false,
+      error: "internal_error",
+      detail: e?.message || "Failed to scan backup files",
+    });
+  }
+});
+
+const port = process.env.PORT || 8095;
+app.listen(port, () => {
+  console.log(`[AFM] adapters listening on :${port}`);
+});

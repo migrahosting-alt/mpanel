@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Migra AFM Guardian - AI Support Demo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
+  <div class="container mx-auto px-4 py-12">
+    <!-- Header -->
+    <div class="text-center mb-12">
+      <h1 class="text-5xl font-bold text-gray-900 mb-4">
+        🤖 Migra AFM Guardian
+      </h1>
+      <p class="text-xl text-gray-600 mb-6">
+        AI-Powered Support Assistant for Your Website
+      </p>
+      <div class="flex justify-center gap-4">
+        <span class="px-4 py-2 bg-blue-100 text-blue-700 rounded-full font-semibold">
+          ⚡ Powered by GPT-4
+        </span>
+        <span class="px-4 py-2 bg-green-100 text-green-700 rounded-full font-semibold">
+          🔒 Secure & Private
+        </span>
+        <span class="px-4 py-2 bg-purple-100 text-purple-700 rounded-full font-semibold">
+          🚀 Easy Integration
+        </span>
+      </div>
+    </div>
+
+    <!-- Features Grid -->
+    <div class="grid md:grid-cols-3 gap-8 mb-16">
+      <div class="bg-white rounded-lg shadow-lg p-8">
+        <div class="text-4xl mb-4">🧠</div>
+        <h3 class="text-xl font-bold mb-2">Intelligent Responses</h3>
+        <p class="text-gray-600">
+          Natural language understanding powered by advanced LLMs. Answers questions about DNS, users, backups, and more.
+        </p>
+      </div>
+
+      <div class="bg-white rounded-lg shadow-lg p-8">
+        <div class="text-4xl mb-4">🔧</div>
+        <h3 class="text-xl font-bold mb-2">Built-in Tools</h3>
+        <p class="text-gray-600">
+          Integrated with PowerDNS, mPanel, and backup systems. Real-time data access for accurate support.
+        </p>
+      </div>
+
+      <div class="bg-white rounded-lg shadow-lg p-8">
+        <div class="text-4xl mb-4">🎨</div>
+        <h3 class="text-xl font-bold mb-2">Customizable Widget</h3>
+        <p class="text-gray-600">
+          Match your brand with custom colors, avatar, and messaging. Easy one-line integration.
+        </p>
+      </div>
+    </div>
+
+    <!-- Live Demo Section -->
+    <div class="bg-white rounded-2xl shadow-2xl p-8 mb-16">
+      <h2 class="text-3xl font-bold text-center mb-6">Try It Live!</h2>
+      <p class="text-center text-gray-600 mb-8">
+        Click the chat button in the bottom-right corner to start a conversation with Abigail.
+      </p>
+
+      <div class="bg-gray-50 rounded-lg p-6 mb-6">
+        <h3 class="font-bold mb-4">Example Questions to Try:</h3>
+        <div class="grid md:grid-cols-2 gap-4">
+          <button onclick="askQuestion('Check DNS records for migrahosting.com')" 
+                  class="text-left px-4 py-3 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors">
+            <div class="font-semibold text-blue-900">DNS Check</div>
+            <div class="text-sm text-gray-600">"Check DNS records for migrahosting.com"</div>
+          </button>
+          <button onclick="askQuestion('Show me backups for example.com')" 
+                  class="text-left px-4 py-3 bg-green-50 hover:bg-green-100 rounded-lg transition-colors">
+            <div class="font-semibold text-green-900">Backup List</div>
+            <div class="text-sm text-gray-600">"Show me backups for example.com"</div>
+          </button>
+          <button onclick="askQuestion('Get user info for client@example.com')" 
+                  class="text-left px-4 py-3 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors">
+            <div class="font-semibold text-purple-900">User Lookup</div>
+            <div class="text-sm text-gray-600">"Get user info for client@example.com"</div>
+          </button>
+          <button onclick="askQuestion('What can you help me with?')" 
+                  class="text-left px-4 py-3 bg-orange-50 hover:bg-orange-100 rounded-lg transition-colors">
+            <div class="font-semibold text-orange-900">General Help</div>
+            <div class="text-sm text-gray-600">"What can you help me with?"</div>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pricing Section -->
+    <div class="bg-white rounded-2xl shadow-2xl p-8 mb-16">
+      <h2 class="text-3xl font-bold text-center mb-12">Simple Pricing</h2>
+      
+      <div class="grid md:grid-cols-3 gap-8">
+        <!-- Starter Plan -->
+        <div class="border-2 border-gray-200 rounded-xl p-8 hover:border-blue-500 transition-all">
+          <h3 class="text-2xl font-bold mb-2">Starter</h3>
+          <div class="text-4xl font-bold text-blue-600 mb-4">
+            $29.99<span class="text-lg text-gray-600">/mo</span>
+          </div>
+          <ul class="space-y-3 mb-6">
+            <li class="flex items-center gap-2">
+              <span class="text-green-600">✓</span>
+              <span>1,000 messages/month</span>
+            </li>
+            <li class="flex items-center gap-2">
+              <span class="text-green-600">✓</span>
+              <span>1 website instance</span>
+            </li>
+            <li class="flex items-center gap-2">
+              <span class="text-green-600">✓</span>
+              <span>Basic tools (DNS, Users)</span>
+            </li>
+            <li class="flex items-center gap-2">
+              <span class="text-green-600">✓</span>
+              <span>Email support</span>
+            </li>
+          </ul>
+          <button class="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors">
+            Get Started
+          </button>
+        </div>
+
+        <!-- Professional Plan -->
+        <div class="border-2 border-blue-600 rounded-xl p-8 relative transform scale-105 shadow-xl">
+          <div class="absolute -top-4 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-4 py-1 rounded-full text-sm font-semibold">
+            Most Popular
+          </div>
+          <h3 class="text-2xl font-bold mb-2">Professional</h3>
+          <div class="text-4xl font-bold text-blue-600 mb-4">
+            $79.99<span class="text-lg text-gray-600">/mo</span>
+          </div>
+          <ul class="space-y-3 mb-6">
+            <li class="flex items-center gap-2">
+              <span class="text-green-600">✓</span>
+              <span>5,000 messages/month</span>
+            </li>
+            <li class="flex items-center gap-2">
+              <span class="text-green-600">✓</span>
+              <span>3 website instances</span>
+            </li>
+            <li class="flex items-center gap-2">
+              <span class="text-green-600">✓</span>
+              <span>All tools + Backups</span>
+            </li>
+            <li class="flex items-center gap-2">
+              <span class="text-green-600">✓</span>
+              <span>Voice support enabled</span>
+            </li>
+            <li class="flex items-center gap-2">
+              <span class="text-green-600">✓</span>
+              <span>Custom branding</span>
+            </li>
+            <li class="flex items-center gap-2">
+              <span class="text-green-600">✓</span>
+              <span>Priority support</span>
+            </li>
+          </ul>
+          <button class="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors">
+            Get Started
+          </button>
+        </div>
+
+        <!-- Enterprise Plan -->
+        <div class="border-2 border-gray-200 rounded-xl p-8 hover:border-blue-500 transition-all">
+          <h3 class="text-2xl font-bold mb-2">Enterprise</h3>
+          <div class="text-4xl font-bold text-blue-600 mb-4">
+            $199.99<span class="text-lg text-gray-600">/mo</span>
+          </div>
+          <ul class="space-y-3 mb-6">
+            <li class="flex items-center gap-2">
+              <span class="text-green-600">✓</span>
+              <span><strong>Unlimited</strong> messages</span>
+            </li>
+            <li class="flex items-center gap-2">
+              <span class="text-green-600">✓</span>
+              <span><strong>Unlimited</strong> instances</span>
+            </li>
+            <li class="flex items-center gap-2">
+              <span class="text-green-600">✓</span>
+              <span>All tools + Custom tools</span>
+            </li>
+            <li class="flex items-center gap-2">
+              <span class="text-green-600">✓</span>
+              <span>Voice support</span>
+            </li>
+            <li class="flex items-center gap-2">
+              <span class="text-green-600">✓</span>
+              <span>White-label branding</span>
+            </li>
+            <li class="flex items-center gap-2">
+              <span class="text-green-600">✓</span>
+              <span>Dedicated support</span>
+            </li>
+          </ul>
+          <button class="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors">
+            Contact Sales
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Integration Guide -->
+    <div class="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl shadow-2xl p-8 text-white">
+      <h2 class="text-3xl font-bold text-center mb-6">Quick Integration</h2>
+      <p class="text-center mb-8 text-blue-100">
+        Add AI-powered support to your website in under 2 minutes
+      </p>
+
+      <div class="bg-white/10 rounded-lg p-6 mb-6">
+        <div class="text-sm text-blue-100 mb-2">Step 1: Add this code before &lt;/body&gt;</div>
+        <pre class="bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto text-sm"><code>&lt;script&gt;
+  window.MigraGuardianConfig = {
+    token: 'your-widget-token',
+    gatewayUrl: 'https://migrapanel.com/guardian',
+    title: 'AI Support',
+    primaryColor: '#3b82f6'
+  };
+&lt;/script&gt;
+&lt;script src="https://migrapanel.com/guardian/widget.js" async&gt;&lt;/script&gt;</code></pre>
+      </div>
+
+      <div class="text-center">
+        <button class="bg-white text-blue-600 px-8 py-3 rounded-lg font-bold hover:bg-blue-50 transition-colors">
+          Get Your Widget Token
+        </button>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="text-center mt-12 text-gray-600">
+      <p>Powered by <strong>Migra AFM Guardian (Abigail)</strong> | Built with ❤️ for MigraHosting</p>
+    </div>
+  </div>
+
+  <!-- Widget Script -->
+  <script>
+    // Demo configuration - connects to local Guardian instance
+    window.MigraGuardianConfig = {
+      token: 'demo.token', // Replace with actual token
+      gatewayUrl: 'http://localhost:8080', // Your Guardian gateway URL
+      title: 'AI Support Demo',
+      subtitle: 'Try asking about DNS, users, or backups!',
+      primaryColor: '#3b82f6',
+      assistantName: 'Abigail',
+      enableVoice: false
+    };
+
+    function askQuestion(question) {
+      if (window.MigraGuardian) {
+        window.MigraGuardian.open();
+        setTimeout(() => {
+          window.MigraGuardian.sendMessage(question);
+        }, 500);
+      }
+    }
+  </script>
+  <script src="/guardian/widget.js"></script>
+</body>
+</html>

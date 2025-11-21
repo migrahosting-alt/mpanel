@@ -1,0 +1,18 @@
+{
+  "whmcs": {
+    "host": "31.220.98.95",
+    "port": 3306,
+    "user": "whmcs_user",
+    "password": "Sikse@222",
+    "database": "whmcs"
+  },
+  "cyberpanel": {
+    "host": "154.38.180.61",
+    "apiPort": 8090,
+    "adminUser": "admin",
+    "adminPassword": "Sikse@222",
+    "dbUser": "root",
+    "dbPassword": "Sikse@222",
+    "dbPort": 3306
+  }
+}

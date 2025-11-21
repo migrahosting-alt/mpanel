@@ -1,0 +1,110 @@
+[32minfo[39m: Connection pool monitoring initialized {"maxConnections":10,"minConnections":2,"service":"mpanel-api","timestamp":"2025-11-18T08:40:18.905Z"}
+
+🧪 Enhanced Plan Access System - Automated Test Suite
+
+============================================================
+
+📊 Section 1: Database Verification
+
+✅ PASS: Service plans seeded (4 plans)
+✅ PASS: All enhanced tables exist (9 tables)
+✅ PASS: Overage rates seeded (8 rates)
+✅ PASS: Promo codes seeded (4 codes)
+✅ PASS: Loyalty tiers seeded (4 tiers)
+
+👤 Section 2: Test Data Setup
+
+✅ PASS: Test customer created
+✅ PASS: Test subscription created
+
+🎁 Section 3: Trial Periods & Freemium
+
+[31merror[39m: Error starting trial: Trial not available for this plan {"service":"mpanel-api","stack":"Error: Trial not available for this plan\n    at Module.startTrial (file:///home/bonex/MigraWeb/MigraHosting/dev/migra-panel/src/services/enhancedPlanService.js:160:13)\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async runTests (file:///home/bonex/MigraWeb/MigraHosting/dev/migra-panel/test-enhanced-features.js:177:19)","timestamp":"2025-11-18T08:40:19.012Z"}
+❌ FAIL: Start trial subscription
+   Error: Trial not available for this plan
+✅ PASS: Get expiring trials
+
+🎯 Section 4: Referral Program
+
+[32minfo[39m: Referral code generated {"code":"TestFDJS","customerId":"00000000-0000-0000-0000-000000000003","service":"mpanel-api","timestamp":"2025-11-18T08:40:19.033Z"}
+✅ PASS: Generate referral code
+✅ PASS: Get referral stats
+
+📅 Section 5: Annual Commit Discounts
+
+[31merror[39m: Database query failed {"context":"monitoredPool.query","duration":4,"error":"null value in column \"price_paid\" of relation \"client_service_subscriptions\" violates not-null constraint","queryType":"INSERT","service":"mpanel-api","sql":"\n      INSERT INTO client_service_subscriptions\n      (tenant_id, customer_id, service_plan_id, status, billing_cycle,\n       has_annual_commit, commit_start_date, commit_end_date, \n       commit_discount_percent, early_termination_fee, commit_months)\n      VALUES ($1, $2, $3, 'active', 'monthly', true, $4, $5, $6, $7, $8)\n      RETURNING *\n    ","timestamp":"2025-11-18T08:40:19.046Z"}
+[31merror[39m: Exception captured by Sentry: null value in column "price_paid" of relation "client_service_subscriptions" violates not-null constraint {"code":"23502","column":"price_paid","detail":"Failing row contains (b5cd8ccc-faac-41d5-a500-d44ec03f00b0, 00000000-0000-0000-0000-000000000001, 00000000-0000-0000-0000-000000000003, 2f0a423f-6af6-4ed0-9416-ba4446cd4e95, monthly, null, null, 0.00, 0.00, 0, 0, 0, active, null, null, null, null, null, null, 2025-11-18 08:40:19.043175, 2025-11-18 08:40:19.043175, f, null, null, null, f, null, t, 2025-11-18, 2026-11-18, 15.00, 120.00, 12).","file":"execMain.c","length":612,"line":"2005","name":"error","routine":"ExecConstraints","schema":"public","service":"mpanel-api","severity":"ERROR","stack":"error: null value in column \"price_paid\" of relation \"client_service_subscriptions\" violates not-null constraint\n    at /home/bonex/MigraWeb/MigraHosting/dev/migra-panel/node_modules/pg-pool/index.js:45:11\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async monitoredQuery (file:///home/bonex/MigraWeb/MigraHosting/dev/migra-panel/src/utils/queryMonitor.js:39:20)\n    at async monitoredPool.query (file:///home/bonex/MigraWeb/MigraHosting/dev/migra-panel/src/db/index.js:33:18)\n    at async Module.createAnnualCommitment (file:///home/bonex/MigraWeb/MigraHosting/dev/migra-panel/src/services/enhancedPlanService.js:426:20)\n    at async runTests (file:///home/bonex/MigraWeb/MigraHosting/dev/migra-panel/test-enhanced-features.js:232:24)","table":"client_service_subscriptions","timestamp":"2025-11-18T08:40:19.047Z"}
+[31merror[39m: Error creating annual commitment: null value in column "price_paid" of relation "client_service_subscriptions" violates not-null constraint {"code":"23502","column":"price_paid","detail":"Failing row contains (b5cd8ccc-faac-41d5-a500-d44ec03f00b0, 00000000-0000-0000-0000-000000000001, 00000000-0000-0000-0000-000000000003, 2f0a423f-6af6-4ed0-9416-ba4446cd4e95, monthly, null, null, 0.00, 0.00, 0, 0, 0, active, null, null, null, null, null, null, 2025-11-18 08:40:19.043175, 2025-11-18 08:40:19.043175, f, null, null, null, f, null, t, 2025-11-18, 2026-11-18, 15.00, 120.00, 12).","file":"execMain.c","length":612,"line":"2005","name":"error","routine":"ExecConstraints","schema":"public","service":"mpanel-api","severity":"ERROR","stack":"error: null value in column \"price_paid\" of relation \"client_service_subscriptions\" violates not-null constraint\n    at /home/bonex/MigraWeb/MigraHosting/dev/migra-panel/node_modules/pg-pool/index.js:45:11\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async monitoredQuery (file:///home/bonex/MigraWeb/MigraHosting/dev/migra-panel/src/utils/queryMonitor.js:39:20)\n    at async monitoredPool.query (file:///home/bonex/MigraWeb/MigraHosting/dev/migra-panel/src/db/index.js:33:18)\n    at async Module.createAnnualCommitment (file:///home/bonex/MigraWeb/MigraHosting/dev/migra-panel/src/services/enhancedPlanService.js:426:20)\n    at async runTests (file:///home/bonex/MigraWeb/MigraHosting/dev/migra-panel/test-enhanced-features.js:232:24)","table":"client_service_subscriptions","timestamp":"2025-11-18T08:40:19.048Z"}
+❌ FAIL: Create annual commitment
+   Error: null value in column "price_paid" of relation "client_service_subscriptions" violates not-null constraint
+
+🏢 Section 6: Resource Pooling (Enterprise)
+
+[32minfo[39m: Resource pool created {"customerId":"00000000-0000-0000-0000-000000000003","poolId":"689ea21d-1d6a-4160-b720-b9c48158501a","service":"mpanel-api","timestamp":"2025-11-18T08:40:19.066Z"}
+❌ FAIL: Create resource pool
+   Error: Pool not created correctly
+
+🔄 Section 7: Grace Periods & Dunning
+
+[32minfo[39m: Failed payment recorded {"attemptNumber":1,"nextRetryDate":"2025-11-21T08:40:19.072Z","service":"mpanel-api","subscriptionId":"00000000-0000-0000-0000-000000000004","timestamp":"2025-11-18T08:40:19.079Z"}
+✅ PASS: Record failed payment
+✅ PASS: Get payments to retry
+
+🎉 Section 8: Promotional Pricing
+
+[32minfo[39m: Promo code validated {"discountAmount":1.499,"finalAmount":13.491,"promoCode":"WELCOME10","service":"mpanel-api","timestamp":"2025-11-18T08:40:19.095Z"}
+✅ PASS: Apply promo code
+✅ PASS: Get active promos
+
+🏆 Section 9: Loyalty & Volume Discounts
+
+✅ PASS: Calculate loyalty discount
+✅ PASS: Get customer loyalty discounts
+
+🤖 Section 10: AI-Powered Plan Recommendations
+
+[32minfo[39m: Plan recommendation generated {"confidence":90,"customerId":"00000000-0000-0000-0000-000000000003","service":"mpanel-api","timestamp":"2025-11-18T08:40:19.128Z","type":"upgrade"}
+✅ PASS: Generate AI recommendation
+✅ PASS: Get customer recommendations
+
+📈 Section 11: Client Success Metrics
+
+[32minfo[39m: Success metrics recorded {"customerId":"00000000-0000-0000-0000-000000000003","date":"2025-11-18","service":"mpanel-api","timestamp":"2025-11-18T08:40:19.137Z"}
+✅ PASS: Record success metrics
+✅ PASS: Get success dashboard
+[32minfo[39m: Milestone awarded {"customerId":"00000000-0000-0000-0000-000000000003","milestoneType":"test_milestone","service":"mpanel-api","timestamp":"2025-11-18T08:40:19.147Z"}
+✅ PASS: Award milestone
+
+💰 Section 12: Usage-Based Billing & Overages
+
+[31merror[39m: Database query failed {"context":"monitoredPool.query","duration":3,"error":"column disk_rate.service_plan_id does not exist","queryType":"OTHER","service":"mpanel-api","sql":"\n      WITH usage_data AS (\n        SELECT \n          css.id,\n          css.customer_id,\n          css.service_plan_id,\n          css.disk_usage_gb,\n          css.bandwidth_usage_gb,\n          sp.disk_space_gb AS disk_limit,\n          sp.bandwidth_gb AS bandwidth_limit\n        FROM client_service_subscriptions css\n        JOIN service_plans sp ON css.service_plan_id = sp.id\n        WHERE css.id = $1 AND css.tenant_id = $2\n      ),\n      overage_calc AS (\n        SELECT \n          ud.*,\n         ... (truncated)","timestamp":"2025-11-18T08:40:19.154Z"}
+[31merror[39m: Exception captured by Sentry: column disk_rate.service_plan_id does not exist {"code":"42703","file":"parse_relation.c","length":125,"line":"3722","name":"error","position":"1103","routine":"errorMissingColumn","service":"mpanel-api","severity":"ERROR","stack":"error: column disk_rate.service_plan_id does not exist\n    at /home/bonex/MigraWeb/MigraHosting/dev/migra-panel/node_modules/pg-pool/index.js:45:11\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async monitoredQuery (file:///home/bonex/MigraWeb/MigraHosting/dev/migra-panel/src/utils/queryMonitor.js:39:20)\n    at async monitoredPool.query (file:///home/bonex/MigraWeb/MigraHosting/dev/migra-panel/src/db/index.js:33:18)\n    at async Module.calculateOverageCharges (file:///home/bonex/MigraWeb/MigraHosting/dev/migra-panel/src/services/enhancedPlanService.js:20:20)\n    at async runTests (file:///home/bonex/MigraWeb/MigraHosting/dev/migra-panel/test-enhanced-features.js:458:21)","timestamp":"2025-11-18T08:40:19.155Z"}
+[31merror[39m: Error calculating overage charges: column disk_rate.service_plan_id does not exist {"code":"42703","file":"parse_relation.c","length":125,"line":"3722","name":"error","position":"1103","routine":"errorMissingColumn","service":"mpanel-api","severity":"ERROR","stack":"error: column disk_rate.service_plan_id does not exist\n    at /home/bonex/MigraWeb/MigraHosting/dev/migra-panel/node_modules/pg-pool/index.js:45:11\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async monitoredQuery (file:///home/bonex/MigraWeb/MigraHosting/dev/migra-panel/src/utils/queryMonitor.js:39:20)\n    at async monitoredPool.query (file:///home/bonex/MigraWeb/MigraHosting/dev/migra-panel/src/db/index.js:33:18)\n    at async Module.calculateOverageCharges (file:///home/bonex/MigraWeb/MigraHosting/dev/migra-panel/src/services/enhancedPlanService.js:20:20)\n    at async runTests (file:///home/bonex/MigraWeb/MigraHosting/dev/migra-panel/test-enhanced-features.js:458:21)","timestamp":"2025-11-18T08:40:19.155Z"}
+❌ FAIL: Calculate overage charges
+   Error: column disk_rate.service_plan_id does not exist
+✅ PASS: Get pending overage charges
+
+🧹 Cleaning up test data...
+
+============================================================
+
+📊 Test Summary
+
+✅ Passed: 22
+❌ Failed: 4
+📈 Success Rate: 84.6%
+
+🔴 Failed Tests:
+
+1. Start trial subscription
+   └─ Trial not available for this plan
+
+2. Create annual commitment
+   └─ null value in column "price_paid" of relation "client_service_subscriptions" violates not-null constraint
+
+3. Create resource pool
+   └─ Pool not created correctly
+
+4. Calculate overage charges
+   └─ column disk_rate.service_plan_id does not exist
+

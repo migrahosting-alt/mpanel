@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" data-name="Layer 1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 637.84 121.34">
+  <defs>
+    <linearGradient id="linear-gradient" x1="-326.75" y1="571.73" x2="-326.21" y2="571.19" gradientTransform="translate(73191.26 128067.8) scale(224 -224)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6a5cff"/>
+      <stop offset=".6" stop-color="#8a4dff"/>
+      <stop offset="1" stop-color="#ff6584"/>
+    </linearGradient>
+  </defs>
+  <circle fill="url(#linear-gradient)" cx="60.67" cy="60.67" r="60.67"/>
+  <path fill="#fff" d="M32.5,86.67v-52h11.92l16.25,26.54,16.25-26.54h11.92v52h-10.83v-30.34l-16.79,26.54h-1.08l-16.79-26.54v30.34h-10.83Z"/>
+  <text fill="#fff" font-family="Gadugi-Bold, Gadugi" font-size="90" font-weight="700" x="137.96" y="86.67">igraHosting</text>
+</svg>

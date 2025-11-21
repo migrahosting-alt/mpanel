@@ -1,0 +1,130 @@
+
+[0;34m========================================[0m
+[0;34m1. System Requirements[0m
+[0;34m========================================[0m
+[0;32m✓[0m Node.js version: v22.21.1 (>= v20.0.0)
+[0;32m✓[0m npm version: 10.9.4
+[0;32m✓[0m Docker version: 
+'docker'
+to
+
+about
+[0;31m✗[0m Docker daemon is not running (enable WSL2 integration in Docker Desktop)
+[0;31m✗[0m Docker Compose not available
+[0;32m✓[0m Disk space: 936GB available (>= 10GB)
+[0;32m✓[0m Memory: 31GB (>= 4GB)
+
+[0;34m========================================[0m
+[0;34m2. Environment Configuration[0m
+[0;34m========================================[0m
+[0;32m✓[0m .env file exists
+.env: line 2: $'\r': command not found
+.env: line 7: $'\r': command not found
+.env: line 12: $'\r': command not found
+.env: line 18: $'\r': command not found
+.env: line 26: $'\r': command not found
+.env: line 31: $'\r': command not found
+.env: line 34: $'49d1ff46a7833d8ca94fe33042d8d09ab7054edc50626cb545e3860e34f59df9\r': command not found
+.env: line 35: $'\r': command not found
+.env: line 38: $'\r': command not found
+.env: line 40: $'\r': command not found
+.env: line 41: $'\r': command not found
+.env: line 45: $'\r': command not found
+.env: line 49: $'\r': command not found
+.env: line 53: $'\r': command not found
+.env: line 58: $'\r': command not found
+.env: line 64: noreply@migrahosting.com: No such file or directory
+.env: line 65: $'\r': command not found
+.env: line 70: $'\r': command not found
+.env: line 76: $'\r': command not found
+.env: line 80: $'\r': command not found
+.env: line 83: $'\r': command not found
+.env: line 87: $'\r': command not found
+.env: line 90: $'\r': command not found
+[0;31m✗[0m NODE_ENV not set or invalid
+[0;32m✓[0m DATABASE_URL is set
+[0;32m✓[0m REDIS_URL is set
+[0;32m✓[0m JWT_SECRET is set (65 characters)
+[1;33m⚠[0m STRIPE_SECRET_KEY uses TEST key (use LIVE key for production)
+[0;32m✓[0m SMTP configuration is complete
+[0;32m✓[0m CORS_ORIGIN is set
+
+[0;34m========================================[0m
+[0;34m3. Dependencies[0m
+[0;34m========================================[0m
+[0;32m✓[0m node_modules directory exists
+[0;32m✓[0m package.json found with 47 dependencies
+[0;32m✓[0m Frontend dependencies installed
+
+[0;34m========================================[0m
+[0;34m4. Database[0m
+[0;34m========================================[0m
+[0;31m✗[0m PostgreSQL container not running (run: docker compose up -d)
+
+[0;34m========================================[0m
+[0;34m5. Redis[0m
+[0;34m========================================[0m
+[0;31m✗[0m Redis container not running (run: docker compose up -d)
+
+[0;34m========================================[0m
+[0;34m6. MinIO/S3[0m
+[0;34m========================================[0m
+[1;33m⚠[0m MinIO container not running (optional, but recommended)
+
+[0;34m========================================[0m
+[0;34m7. Security[0m
+[0;34m========================================[0m
+[0;32m✓[0m .env file is not tracked by git
+[1;33m⚠[0m .env file permissions: 755 (recommended: 600)
+
+[0;34m========================================[0m
+[0;34m8. File Structure[0m
+[0;34m========================================[0m
+[0;32m✓[0m Directory exists: src
+[0;32m✓[0m Directory exists: src/controllers
+[0;32m✓[0m Directory exists: src/services
+[0;32m✓[0m Directory exists: src/routes
+[0;32m✓[0m Directory exists: src/middleware
+[0;32m✓[0m Directory exists: src/db
+[0;32m✓[0m Directory exists: frontend
+[0;32m✓[0m Directory exists: frontend/src
+[0;32m✓[0m Directory exists: prisma/migrations
+[0;32m✓[0m File exists: src/server.js
+[0;32m✓[0m File exists: package.json
+[0;32m✓[0m File exists: docker-compose.yml
+[0;32m✓[0m File exists: frontend/package.json
+
+[0;34m========================================[0m
+[0;34m9. Build Tests[0m
+[0;34m========================================[0m
+[0;32m✓[0m Backend syntax is valid (src/server.js)
+[0;31m✗[0m Frontend build failed
+
+[0;34m========================================[0m
+[0;34m10. Port Availability[0m
+[0;34m========================================[0m
+[1;33m⚠[0m Port 3000 is in use (needed for Backend API)
+[0;32m✓[0m Port 3001 is available (Frontend)
+[1;33m⚠[0m Port 5433 is in use (needed for PostgreSQL)
+[1;33m⚠[0m Port 6380 is in use (needed for Redis)
+[1;33m⚠[0m Port 9000 is in use (needed for MinIO)
+
+[0;34m========================================[0m
+[0;34mPre-Flight Check Summary[0m
+[0;34m========================================[0m
+
+[0;32mPassed:[0m   30/43
+[1;33mWarnings:[0m 7/43
+[0;31mFailed:[0m   6/43
+
+[0;31m========================================[0m
+[0;31m✗ PRE-FLIGHT CHECK FAILED[0m
+[0;31m========================================[0m
+
+[0;31mFix 6 critical issues before proceeding[0m
+
+Common fixes:
+• Missing .env: cp .env.example .env
+• Missing dependencies: npm install && cd frontend && npm install
+• Docker not running: Start Docker Desktop and enable WSL2 integration
+• Database not ready: docker compose up -d

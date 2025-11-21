@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Checkout Success - mPanel Demo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+  <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div class="bg-white rounded-lg shadow-xl overflow-hidden">
+      <div class="p-8 text-center">
+        <!-- Success Icon -->
+        <div class="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-6">
+          <svg class="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+          </svg>
+        </div>
+
+        <h1 class="text-3xl font-bold text-gray-900 mb-4">Payment Successful!</h1>
+        <p class="text-lg text-gray-600 mb-8">Thank you for your purchase. Your hosting service is being provisioned.</p>
+
+        <!-- Session Details -->
+        <div id="session-info" class="bg-gray-50 rounded-lg p-6 mb-8 text-left">
+          <h2 class="text-xl font-semibold text-gray-900 mb-4">Order Details</h2>
+          <div class="space-y-2">
+            <div class="flex justify-between text-sm">
+              <span class="text-gray-600">Session ID:</span>
+              <span id="session-id" class="font-mono text-gray-900">Loading...</span>
+            </div>
+            <div class="flex justify-between text-sm">
+              <span class="text-gray-600">Status:</span>
+              <span id="payment-status" class="font-semibold text-green-600">Processing...</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- What's Next -->
+        <div class="text-left mb-8">
+          <h2 class="text-xl font-semibold text-gray-900 mb-4">What's Next?</h2>
+          <div class="space-y-3">
+            <div class="flex items-start">
+              <div class="flex-shrink-0">
+                <div class="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
+                  <span class="text-sm font-semibold text-blue-600">1</span>
+                </div>
+              </div>
+              <div class="ml-3">
+                <p class="text-sm text-gray-700">Check your email for account credentials</p>
+              </div>
+            </div>
+            <div class="flex items-start">
+              <div class="flex-shrink-0">
+                <div class="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
+                  <span class="text-sm font-semibold text-blue-600">2</span>
+                </div>
+              </div>
+              <div class="ml-3">
+                <p class="text-sm text-gray-700">Your hosting service will be provisioned automatically (usually within 5-10 minutes)</p>
+              </div>
+            </div>
+            <div class="flex items-start">
+              <div class="flex-shrink-0">
+                <div class="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
+                  <span class="text-sm font-semibold text-blue-600">3</span>
+                </div>
+              </div>
+              <div class="ml-3">
+                <p class="text-sm text-gray-700">Log in to your client portal to manage your services</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex flex-col sm:flex-row gap-4">
+          <a 
+            href="https://migrapanel.com/login" 
+            class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200 text-center"
+          >
+            Go to Client Portal
+          </a>
+          <a 
+            href="/" 
+            class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-6 rounded-lg transition-colors duration-200 text-center"
+          >
+            Return to Home
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Debug Info (remove in production) -->
+    <div class="mt-8 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+      <h3 class="text-sm font-semibold text-yellow-800 mb-2">🔧 Debug Information</h3>
+      <p class="text-xs text-yellow-700 mb-2">This section is for development purposes. Remove in production.</p>
+      <div class="bg-white rounded p-3">
+        <pre id="debug-info" class="text-xs text-gray-700 overflow-auto"></pre>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Parse URL parameters
+    function getUrlParams() {
+      const params = new URLSearchParams(window.location.search);
+      return {
+        sessionId: params.get('session_id'),
+        success: params.get('success') === 'true'
+      };
+    }
+
+    // Display session information
+    function displaySessionInfo() {
+      const { sessionId, success } = getUrlParams();
+
+      if (sessionId) {
+        document.getElementById('session-id').textContent = sessionId;
+      } else {
+        document.getElementById('session-id').textContent = 'No session ID found';
+      }
+
+      if (success) {
+        document.getElementById('payment-status').textContent = 'Completed';
+        document.getElementById('payment-status').classList.add('text-green-600');
+      } else {
+        document.getElementById('payment-status').textContent = 'Pending';
+        document.getElementById('payment-status').classList.remove('text-green-600');
+        document.getElementById('payment-status').classList.add('text-yellow-600');
+      }
+
+      // Display debug info
+      const debugInfo = {
+        url: window.location.href,
+        params: getUrlParams(),
+        timestamp: new Date().toISOString(),
+        userAgent: navigator.userAgent
+      };
+      
+      document.getElementById('debug-info').textContent = JSON.stringify(debugInfo, null, 2);
+    }
+
+    // Optional: Track conversion in Google Analytics, Facebook Pixel, etc.
+    function trackConversion() {
+      const { sessionId } = getUrlParams();
+      
+      // Example: Google Analytics 4
+      if (typeof gtag !== 'undefined') {
+        gtag('event', 'purchase', {
+          transaction_id: sessionId,
+          value: 0, // You can pass the actual value
+          currency: 'USD'
+        });
+      }
+
+      // Example: Facebook Pixel
+      if (typeof fbq !== 'undefined') {
+        fbq('track', 'Purchase', {
+          value: 0,
+          currency: 'USD'
+        });
+      }
+
+      console.log('Conversion tracked for session:', sessionId);
+    }
+
+    // Initialize page
+    displaySessionInfo();
+    trackConversion();
+
+    // Optional: Show confirmation message
+    setTimeout(() => {
+      console.log('Order confirmation displayed');
+    }, 1000);
+  </script>
+</body>
+</html>

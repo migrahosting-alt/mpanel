@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mPanel Integration Demo - Marketing Site Example</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <!-- Header -->
+    <div class="text-center mb-12">
+      <h1 class="text-4xl font-bold text-gray-900 mb-4">Choose Your Hosting Plan</h1>
+      <p class="text-lg text-gray-600">Powered by mPanel - Production-ready hosting platform</p>
+    </div>
+
+    <!-- Billing Toggle -->
+    <div class="flex justify-center mb-8">
+      <div class="bg-white rounded-lg shadow p-1 inline-flex">
+        <button 
+          id="monthly-btn"
+          class="px-6 py-2 rounded-md font-medium transition-colors duration-200"
+          onclick="switchTerm('monthly')"
+        >
+          Monthly
+        </button>
+        <button 
+          id="annually-btn"
+          class="px-6 py-2 rounded-md font-medium transition-colors duration-200"
+          onclick="switchTerm('annually')"
+        >
+          Annually <span class="text-green-600 text-sm ml-1">(Save 20%)</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Plans Container -->
+    <div id="plans-container" class="grid grid-cols-1 md:grid-cols-3 gap-8">
+      <!-- Plans will be loaded here -->
+      <div class="text-center py-12">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+        <p class="mt-4 text-gray-600">Loading plans...</p>
+      </div>
+    </div>
+
+    <!-- Error Message -->
+    <div id="error-message" class="hidden mt-8 bg-red-50 border border-red-200 rounded-lg p-4">
+      <p class="text-red-800"></p>
+    </div>
+  </div>
+
+  <script type="module">
+    // Configuration
+    const MPANEL_URL = 'https://migrapanel.com'; // mPanel API URL
+    const SUCCESS_URL = window.location.origin + '/checkout/success.html';
+    const CANCEL_URL = window.location.origin;
+
+    let currentTerm = 'monthly';
+    let plans = [];
+
+    // Initialize
+    async function init() {
+      try {
+        await loadPlans();
+        setActiveTerm('monthly');
+      } catch (error) {
+        showError(error.message);
+      }
+    }
+
+    // Load plans from mPanel
+    async function loadPlans() {
+      const response = await fetch(`${MPANEL_URL}/api/public/plans`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to load plans. Please check if mPanel is running.');
+      }
+
+      const data = await response.json();
+      plans = data.plans || [];
+      
+      if (plans.length === 0) {
+        throw new Error('No plans available');
+      }
+
+      renderPlans();
+    }
+
+    // Render plans to DOM
+    function renderPlans() {
+      const container = document.getElementById('plans-container');
+      
+      container.innerHTML = plans.map(plan => {
+        const price = currentTerm === 'monthly' ? plan.monthly_price : plan.annual_price;
+        const term = currentTerm === 'monthly' ? '/month' : '/year';
+        const savings = currentTerm === 'annually' 
+          ? Math.round(((plan.monthly_price * 12 - plan.annual_price) / (plan.monthly_price * 12)) * 100)
+          : 0;
+
+        return `
+          <div class="bg-white rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow duration-300">
+            <div class="p-8">
+              <h3 class="text-2xl font-bold text-gray-900 mb-2">${plan.name}</h3>
+              <p class="text-gray-600 mb-6">${plan.description || 'Perfect for your needs'}</p>
+              
+              <div class="mb-6">
+                <span class="text-4xl font-bold text-gray-900">$${price}</span>
+                <span class="text-gray-600">${term}</span>
+                ${savings > 0 ? `<div class="text-sm text-green-600 mt-1">Save ${savings}%</div>` : ''}
+              </div>
+
+              <button 
+                onclick="handleCheckout('${plan.id}', '${currentTerm}')"
+                class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200 mb-6"
+              >
+                Get Started
+              </button>
+
+              <div class="space-y-3">
+                <div class="flex items-center text-sm text-gray-700">
+                  <svg class="w-5 h-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                  </svg>
+                  ${plan.disk_space || '10'} GB SSD Storage
+                </div>
+                <div class="flex items-center text-sm text-gray-700">
+                  <svg class="w-5 h-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                  </svg>
+                  ${plan.bandwidth || 'Unlimited'} Bandwidth
+                </div>
+                <div class="flex items-center text-sm text-gray-700">
+                  <svg class="w-5 h-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                  </svg>
+                  ${plan.max_websites || 1} Website${plan.max_websites > 1 ? 's' : ''}
+                </div>
+                <div class="flex items-center text-sm text-gray-700">
+                  <svg class="w-5 h-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                  </svg>
+                  Free SSL Certificate
+                </div>
+                <div class="flex items-center text-sm text-gray-700">
+                  <svg class="w-5 h-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                  </svg>
+                  24/7 Support
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Handle checkout button click
+    window.handleCheckout = async function(planId, term) {
+      // Get email from user
+      const email = prompt('Enter your email address:');
+      
+      if (!email) {
+        return;
+      }
+
+      // Validate email
+      if (!email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+        alert('Please enter a valid email address');
+        return;
+      }
+
+      try {
+        // Show loading state
+        const button = event.target;
+        button.disabled = true;
+        button.textContent = 'Creating checkout session...';
+
+        // Create checkout session
+        const response = await fetch(`${MPANEL_URL}/api/public/checkout`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            planId,
+            term,
+            email,
+            successUrl: SUCCESS_URL,
+            cancelUrl: CANCEL_URL
+          })
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Failed to create checkout session');
+        }
+
+        const data = await response.json();
+
+        // Redirect to Stripe checkout
+        window.location.href = data.url;
+
+      } catch (error) {
+        alert('Error: ' + error.message);
+        button.disabled = false;
+        button.textContent = 'Get Started';
+      }
+    };
+
+    // Switch billing term
+    window.switchTerm = function(term) {
+      currentTerm = term;
+      setActiveTerm(term);
+      renderPlans();
+    };
+
+    // Update active term button
+    function setActiveTerm(term) {
+      const monthlyBtn = document.getElementById('monthly-btn');
+      const annuallyBtn = document.getElementById('annually-btn');
+
+      if (term === 'monthly') {
+        monthlyBtn.classList.add('bg-blue-600', 'text-white');
+        monthlyBtn.classList.remove('text-gray-700');
+        annuallyBtn.classList.remove('bg-blue-600', 'text-white');
+        annuallyBtn.classList.add('text-gray-700');
+      } else {
+        annuallyBtn.classList.add('bg-blue-600', 'text-white');
+        annuallyBtn.classList.remove('text-gray-700');
+        monthlyBtn.classList.remove('bg-blue-600', 'text-white');
+        monthlyBtn.classList.add('text-gray-700');
+      }
+    }
+
+    // Show error message
+    function showError(message) {
+      const errorDiv = document.getElementById('error-message');
+      errorDiv.querySelector('p').textContent = message;
+      errorDiv.classList.remove('hidden');
+      
+      const container = document.getElementById('plans-container');
+      container.innerHTML = '';
+    }
+
+    // Initialize on page load
+    init();
+  </script>
+</body>
+</html>

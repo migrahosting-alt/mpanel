@@ -1,0 +1,256 @@
+<!-- Welcome Email Template - Account Provisioning Complete -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to {{company_name}}</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 40px 30px;
+            text-align: center;
+        }
+        .header h1 {
+            color: #ffffff;
+            margin: 0;
+            font-size: 28px;
+            font-weight: 600;
+        }
+        .content {
+            padding: 40px 30px;
+        }
+        .content h2 {
+            color: #333333;
+            font-size: 22px;
+            margin: 0 0 20px 0;
+        }
+        .content p {
+            color: #666666;
+            font-size: 16px;
+            line-height: 1.6;
+            margin: 0 0 15px 0;
+        }
+        .credentials-box {
+            background-color: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin: 25px 0;
+            border-radius: 4px;
+        }
+        .credential-row {
+            margin: 12px 0;
+            font-family: 'Courier New', monospace;
+        }
+        .credential-label {
+            color: #666666;
+            font-size: 14px;
+            display: inline-block;
+            width: 160px;
+            font-weight: 600;
+        }
+        .credential-value {
+            color: #333333;
+            font-size: 14px;
+            font-weight: normal;
+        }
+        .button {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #ffffff !important;
+            text-decoration: none;
+            padding: 14px 32px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 16px;
+            margin: 20px 0;
+        }
+        .getting-started {
+            background-color: #e8f4fd;
+            border-radius: 8px;
+            padding: 25px;
+            margin: 30px 0;
+        }
+        .getting-started h3 {
+            color: #333333;
+            font-size: 18px;
+            margin: 0 0 15px 0;
+        }
+        .getting-started ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+        .getting-started li {
+            color: #666666;
+            font-size: 15px;
+            line-height: 1.8;
+            margin-bottom: 10px;
+        }
+        .warning-box {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .warning-box p {
+            color: #856404;
+            margin: 0;
+            font-size: 14px;
+        }
+        .footer {
+            background-color: #f8f9fa;
+            padding: 30px;
+            text-align: center;
+            border-top: 1px solid #e9ecef;
+        }
+        .footer p {
+            color: #999999;
+            font-size: 14px;
+            margin: 5px 0;
+        }
+        .footer a {
+            color: #667eea;
+            text-decoration: none;
+        }
+        .resources {
+            background-color: #ffffff;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 25px 0;
+        }
+        .resources h3 {
+            color: #333333;
+            font-size: 18px;
+            margin: 0 0 15px 0;
+        }
+        .resource-link {
+            display: block;
+            color: #667eea;
+            text-decoration: none;
+            padding: 10px 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+        .resource-link:last-child {
+            border-bottom: none;
+        }
+        .resource-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🎉 Welcome to {{company_name}}!</h1>
+        </div>
+
+        <!-- Main Content -->
+        <div class="content">
+            <h2>Hi {{customer_name}},</h2>
+            
+            <p>Great news! Your hosting account for <strong>{{domain}}</strong> has been successfully provisioned and is ready to use.</p>
+
+            <p>Your website is now live on our high-performance infrastructure with the <strong>{{package}}</strong> plan.</p>
+
+            <!-- Login Credentials -->
+            <div class="credentials-box">
+                <h3 style="margin-top: 0; color: #333333; font-size: 18px;">Your Account Details</h3>
+                
+                <div class="credential-row">
+                    <span class="credential-label">Domain:</span>
+                    <span class="credential-value">{{domain}}</span>
+                </div>
+                
+                <div class="credential-row">
+                    <span class="credential-label">Control Panel:</span>
+                    <span class="credential-value">{{control_panel_url}}</span>
+                </div>
+                
+                <div class="credential-row">
+                    <span class="credential-label">Username:</span>
+                    <span class="credential-value">{{username}}</span>
+                </div>
+                
+                <div class="credential-row">
+                    <span class="credential-label">Server:</span>
+                    <span class="credential-value">{{server}}</span>
+                </div>
+
+                <div class="credential-row">
+                    <span class="credential-label">Nameservers:</span>
+                    <span class="credential-value">ns1.migrahosting.com<br>ns2.migrahosting.com</span>
+                </div>
+            </div>
+
+            <!-- Security Warning -->
+            <div class="warning-box">
+                <p><strong>⚠️ Important:</strong> For security reasons, please change your password immediately after your first login. Your temporary password was sent to you separately.</p>
+            </div>
+
+            <!-- CTA Button -->
+            <div style="text-align: center;">
+                <a href="{{login_url}}" class="button">Access Control Panel</a>
+            </div>
+
+            <!-- Getting Started Guide -->
+            <div class="getting-started">
+                <h3>🚀 Getting Started</h3>
+                <ul>
+                    <li><strong>Update DNS:</strong> Point your domain's nameservers to ns1.migrahosting.com and ns2.migrahosting.com</li>
+                    <li><strong>Upload Files:</strong> Use the File Manager in your control panel or connect via FTP</li>
+                    <li><strong>Create Email Accounts:</strong> Set up professional email addresses for your domain</li>
+                    <li><strong>Install SSL:</strong> Free SSL certificate is already installed and active</li>
+                    <li><strong>Install Applications:</strong> Use our one-click installer for WordPress, Joomla, and more</li>
+                </ul>
+            </div>
+
+            <!-- Resources -->
+            <div class="resources">
+                <h3>📚 Helpful Resources</h3>
+                <a href="https://docs.migrahosting.com" class="resource-link">📖 Knowledge Base</a>
+                <a href="https://docs.migrahosting.com/quickstart" class="resource-link">⚡ Quick Start Guide</a>
+                <a href="https://docs.migrahosting.com/cpanel" class="resource-link">🎛️ cPanel Tutorial</a>
+                <a href="https://docs.migrahosting.com/wordpress" class="resource-link">🌐 WordPress Installation Guide</a>
+                <a href="{{support_email}}" class="resource-link">💬 Contact Support</a>
+            </div>
+
+            <p>If you have any questions or need assistance, our support team is here to help 24/7.</p>
+
+            <p>Thank you for choosing {{company_name}}!</p>
+
+            <p style="margin-top: 30px;">
+                Best regards,<br>
+                <strong>The {{company_name}} Team</strong>
+            </p>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p>{{company_name}} - Premium Web Hosting Solutions</p>
+            <p>
+                <a href="https://migrahosting.com">Website</a> | 
+                <a href="https://migrahosting.com/support">Support</a> | 
+                <a href="https://migrahosting.com/docs">Documentation</a>
+            </p>
+            <p style="font-size: 12px; color: #aaa; margin-top: 15px;">
+                This is an automated message. Please do not reply directly to this email.<br>
+                For support, please contact {{support_email}}
+            </p>
+        </div>
+    </div>
+</body>
+</html>

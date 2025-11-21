@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hosting Pricing - Vanilla JS Example</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+  <div class="max-w-7xl mx-auto px-4 py-16">
+    <div class="text-center mb-12">
+      <h2 class="text-4xl font-bold mb-4">Shared Hosting Plans</h2>
+      <p class="text-gray-600 mb-8">Powerful hosting for everyone</p>
+      
+      <!-- Billing Cycle Selector -->
+      <div id="billing-selector" class="inline-flex rounded-lg border border-gray-300 p-1">
+        <!-- Buttons will be inserted here by JavaScript -->
+      </div>
+    </div>
+
+    <!-- Pricing Cards -->
+    <div id="pricing-grid" class="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+      <!-- Cards will be inserted here by JavaScript -->
+    </div>
+  </div>
+
+  <script type="module">
+    // Import pricing configuration (in real implementation, use your actual pricingConfig.js)
+    const hostingPlans = {
+      currency: "USD",
+      billingCycles: ["monthly", "oneYear", "twoYears", "threeYears"],
+      plans: [
+        {
+          id: "student",
+          name: "Student",
+          type: "shared-hosting",
+          pricing: { monthly: 0, oneYear: 0, twoYears: 0, threeYears: 0 },
+          notes: "Requires academic verification.",
+        },
+        {
+          id: "starter",
+          name: "Starter",
+          type: "shared-hosting",
+          pricing: { monthly: 7.95, oneYear: 1.99, twoYears: 1.69, threeYears: 1.49 },
+        },
+        {
+          id: "premium",
+          name: "Premium",
+          type: "shared-hosting",
+          pricing: { monthly: 8.95, oneYear: 3.19, twoYears: 2.79, threeYears: 2.49 },
+        },
+        {
+          id: "business",
+          name: "Business",
+          type: "shared-hosting",
+          pricing: { monthly: 9.95, oneYear: 4.79, twoYears: 4.39, threeYears: 3.99 },
+        },
+      ],
+    };
+
+    // Helper functions
+    function formatPrice(price, currency = "USD") {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: currency,
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(price);
+    }
+
+    function getBillingCycleLabel(cycle) {
+      const labels = {
+        monthly: "Monthly",
+        yearly: "Yearly",
+        oneYear: "1 Year",
+        twoYears: "2 Years",
+        threeYears: "3 Years",
+      };
+      return labels[cycle] || cycle;
+    }
+
+    function getMonthsForCycle(cycle) {
+      const months = {
+        monthly: 1,
+        yearly: 12,
+        oneYear: 12,
+        twoYears: 24,
+        threeYears: 36,
+      };
+      return months[cycle] || 1;
+    }
+
+    function getPriceWithSavings(monthlyPrice, termPrice, months) {
+      const totalMonthly = monthlyPrice * months;
+      const savings = totalMonthly - termPrice;
+      const savingsPercent = Math.round((savings / totalMonthly) * 100);
+      
+      return { price: termPrice, savings, savingsPercent };
+    }
+
+    // State
+    let currentBillingCycle = 'oneYear';
+
+    // Render billing cycle selector
+    function renderBillingSelector() {
+      const selector = document.getElementById('billing-selector');
+      selector.innerHTML = hostingPlans.billingCycles.map(cycle => `
+        <button
+          onclick="changeBillingCycle('${cycle}')"
+          class="px-6 py-2 rounded-md transition-colors ${
+            currentBillingCycle === cycle
+              ? 'bg-blue-600 text-white'
+              : 'text-gray-700 hover:bg-gray-100'
+          }"
+        >
+          ${getBillingCycleLabel(cycle)}
+        </button>
+      `).join('');
+    }
+
+    // Render pricing cards
+    function renderPricingCards() {
+      const grid = document.getElementById('pricing-grid');
+      grid.innerHTML = hostingPlans.plans.map(plan => {
+        const price = plan.pricing[currentBillingCycle];
+        const monthlyPrice = plan.pricing.monthly;
+        const months = getMonthsForCycle(currentBillingCycle);
+        const { savings, savingsPercent } = currentBillingCycle !== 'monthly' 
+          ? getPriceWithSavings(monthlyPrice, price * months, months)
+          : { savings: 0, savingsPercent: 0 };
+
+        return `
+          <div class="border rounded-lg p-6 hover:shadow-xl transition-shadow bg-white">
+            <h3 class="text-2xl font-bold mb-2">${plan.name}</h3>
+            
+            <!-- Price -->
+            <div class="mb-4">
+              <div class="text-4xl font-bold text-blue-600">
+                ${price === 0 ? 'FREE' : formatPrice(price, hostingPlans.currency)}
+              </div>
+              ${price > 0 ? `
+                <div class="text-sm text-gray-600">
+                  per month
+                  ${currentBillingCycle !== 'monthly' ? `
+                    <span class="block text-xs mt-1">
+                      billed ${getBillingCycleLabel(currentBillingCycle).toLowerCase()}
+                    </span>
+                  ` : ''}
+                </div>
+              ` : ''}
+            </div>
+
+            <!-- Savings Badge -->
+            ${savingsPercent > 0 ? `
+              <div class="mb-4">
+                <span class="inline-block bg-green-100 text-green-800 text-xs px-3 py-1 rounded-full font-semibold">
+                  Save ${savingsPercent}% ($${savings.toFixed(2)})
+                </span>
+              </div>
+            ` : ''}
+
+            <!-- Notes -->
+            ${plan.notes ? `
+              <p class="text-sm text-gray-600 mb-4 italic">${plan.notes}</p>
+            ` : ''}
+
+            <!-- CTA Button -->
+            <button
+              onclick="orderPlan('${plan.id}', '${currentBillingCycle}')"
+              class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors"
+            >
+              ${price === 0 ? 'Get Started Free' : 'Order Now'}
+            </button>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Change billing cycle
+    window.changeBillingCycle = function(cycle) {
+      currentBillingCycle = cycle;
+      renderBillingSelector();
+      renderPricingCards();
+    };
+
+    // Order plan
+    window.orderPlan = function(planId, billingCycle) {
+      console.log('Ordering plan:', planId, billingCycle);
+      
+      // Integrate with mPanel checkout
+      const email = prompt('Enter your email address:');
+      if (!email) return;
+
+      // Call mPanel API (example)
+      fetch('https://migrapanel.com/api/public/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          planId: planId,
+          term: billingCycle,
+          email: email,
+          successUrl: window.location.origin + '/checkout/success',
+          cancelUrl: window.location.href,
+        }),
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.checkoutUrl) {
+            window.location.href = data.checkoutUrl;
+          }
+        })
+        .catch(err => {
+          console.error('Checkout error:', err);
+          alert('Failed to create checkout. Please try again.');
+        });
+    };
+
+    // Initial render
+    renderBillingSelector();
+    renderPricingCards();
+  </script>
+</body>
+</html>

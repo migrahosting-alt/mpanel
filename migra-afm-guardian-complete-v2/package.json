@@ -1,0 +1,12 @@
+{
+  "name": "mock-mpanel",
+  "version": "1.0.0",
+  "description": "Mock mPanel API for testing AFM Guardian",
+  "main": "mock-mpanel.js",
+  "scripts": {
+    "start": "node mock-mpanel.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
