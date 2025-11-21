@@ -70,3 +70,4 @@ minio_data/
 
 # Nested mpanel-main folder (avoid recursion)
 mpanel-main/
+heap-dumps/
