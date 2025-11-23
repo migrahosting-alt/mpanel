@@ -19,6 +19,7 @@ import pool from '../db/index.js';
 import logger from '../utils/logger.js';
 import queueService from '../services/queueService.js';
 import * as emailTemplates from '../services/emailTemplates.js';
+import { provisionHostingForSubscription } from '../services/provisioning/hosting.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/authorization.js';
 
@@ -74,9 +75,275 @@ const provisioningLimiter = rateLimit({
   message: { error: 'Provisioning rate limit exceeded' },
 });
 
+// Utility helpers
+const BILLING_INTERVALS = {
+  monthly: '1 month',
+  quarterly: '3 months',
+  semiannually: '6 months',
+  annually: '1 year',
+  yearly: '1 year',
+};
+
+const getBillingInterval = (cycle = 'monthly') =>
+  BILLING_INTERVALS[cycle] || BILLING_INTERVALS.monthly;
+
+const calculateCyclePrice = (product, billingCycle = 'monthly') => {
+  const metadataPricing = product?.metadata?.pricing;
+  if (metadataPricing && metadataPricing[billingCycle]) {
+    return Number(metadataPricing[billingCycle]);
+  }
+  if (metadataPricing && metadataPricing.default) {
+    return Number(metadataPricing.default);
+  }
+  return Number(product.price);
+};
+
+const parseDomain = (domain) => {
+  if (!domain) return { domainName: null, tld: null };
+  const normalized = domain.trim().toLowerCase();
+  const parts = normalized.split('.');
+  const tld = parts.length > 1 ? parts.slice(-1).join('.') : parts[0];
+  return { domainName: normalized, tld };
+};
+
 // ===========================================
 // ACCOUNT CREATION & AUTOMATION
 // ===========================================
+
+/**
+ * POST /api/marketing/checkout-intent
+ * Create subscription + Stripe checkout session placeholder
+ * @access Marketing API Key
+ */
+router.post(
+  '/checkout-intent',
+  marketingApiLimiter,
+  authenticateMarketingApi,
+  async (req, res) => {
+    const client = await pool.connect();
+    let transactionStarted = false;
+
+    try {
+      const {
+        planSlug,
+        billingCycle = 'monthly',
+        domain,
+        domainMode = 'new_registration',
+        customer,
+        account,
+        testMode: testModeFlag,
+        promoCode,
+      } = req.body;
+
+      if (!planSlug || !domain || !customer?.email || !account?.password) {
+        return res.status(400).json({
+          error: 'planSlug, domain, customer.email, and account.password are required',
+        });
+      }
+
+      if (!['new_registration', 'external'].includes(domainMode)) {
+        return res.status(400).json({ error: 'domainMode must be new_registration or external' });
+      }
+
+      const tenantId = req.tenantId;
+      const envTestMode = process.env.MARKETING_TEST_MODE === 'true';
+      const isTestMode = Boolean(testModeFlag) || envTestMode;
+      const overrideDiscountCode = process.env.MARKETING_OVERRIDE_CODE;
+      const overrideDiscountApplied =
+        Boolean(promoCode && overrideDiscountCode) &&
+        promoCode.toLowerCase() === overrideDiscountCode.toLowerCase();
+
+      // Look up product by slug (metadata.slug) or name fallback
+      const productResult = await client.query(
+        `SELECT * FROM products
+         WHERE tenant_id = $1
+         AND (
+           LOWER(metadata ->> 'slug') = LOWER($2)
+           OR LOWER(name) = LOWER($2)
+         )
+         LIMIT 1`,
+        [tenantId, planSlug]
+      );
+
+      if (productResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Plan not found' });
+      }
+
+      const product = productResult.rows[0];
+      const calculatedPrice = calculateCyclePrice(product, billingCycle);
+      const subscriptionPrice = overrideDiscountApplied || isTestMode ? 0 : calculatedPrice;
+      const interval = getBillingInterval(billingCycle);
+      const bcrypt = (await import('bcrypt')).default;
+      const passwordHash = await bcrypt.hash(account.password, 10);
+      const { domainName, tld } = parseDomain(domain);
+
+      if (!domainName || !tld) {
+        return res.status(400).json({ error: 'Invalid domain format supplied' });
+      }
+
+      await client.query('BEGIN');
+      transactionStarted = true;
+
+      // Upsert user for panel access
+      const userResult = await client.query(
+        `INSERT INTO users (tenant_id, email, password_hash, first_name, last_name, role, status)
+         VALUES ($1, $2, $3, $4, $5, 'customer', 'active')
+         ON CONFLICT (tenant_id, email) DO UPDATE SET
+           first_name = EXCLUDED.first_name,
+           last_name = EXCLUDED.last_name,
+           password_hash = EXCLUDED.password_hash,
+           status = 'active',
+           updated_at = NOW()
+         RETURNING id`,
+        [tenantId, customer.email.toLowerCase(), passwordHash, customer.firstName || null, customer.lastName || null]
+      );
+
+      const userId = userResult.rows[0].id;
+
+      // Fetch or create customer profile
+      const existingCustomer = await client.query(
+        `SELECT id FROM customers WHERE tenant_id = $1 AND user_id = $2 LIMIT 1`,
+        [tenantId, userId]
+      );
+
+      let customerId = existingCustomer.rows[0]?.id;
+
+      if (!customerId) {
+        const customerInsert = await client.query(
+          `INSERT INTO customers (tenant_id, user_id, currency)
+           VALUES ($1, $2, $3)
+           RETURNING id`,
+          [tenantId, userId, product.currency || 'USD']
+        );
+        customerId = customerInsert.rows[0].id;
+      }
+
+      // Create subscription placeholder
+      const checkoutSessionId = `sess_${crypto.randomBytes(12).toString('hex')}`;
+      const subscriptionMetadata = JSON.stringify({
+        planSlug,
+        checkoutSessionId,
+        domainMode,
+        marketingSource: req.body.marketingSource || null,
+        testMode: isTestMode,
+        promoCode: promoCode || null,
+        overrideDiscountApplied,
+      });
+
+      const subscriptionStatus = subscriptionPrice > 0 ? 'pending_payment' : 'active';
+
+      const subscriptionResult = await client.query(
+        `INSERT INTO subscriptions (
+            tenant_id, customer_id, product_id, status,
+            billing_cycle, price, next_billing_date, next_due_date, metadata
+        )
+        VALUES (
+          $1, $2, $3, $4, $5, $6,
+          NOW() + INTERVAL '${interval}', NOW() + INTERVAL '${interval}', $7::jsonb
+        )
+         RETURNING id`,
+        [
+          tenantId,
+          customerId,
+          product.id,
+          subscriptionStatus,
+          billingCycle,
+          subscriptionPrice,
+          subscriptionMetadata,
+        ]
+      );
+
+      const subscriptionId = subscriptionResult.rows[0].id;
+
+      // Create domain record in pending state
+      const domainMetadata = JSON.stringify({
+        domainMode,
+        requestedAt: new Date().toISOString(),
+      });
+
+      const domainResult = await client.query(
+        `INSERT INTO domains (
+            tenant_id, customer_id, subscription_id, domain_name, tld,
+            status, registrar, metadata
+         )
+         VALUES ($1, $2, $3, $4, $5, 'pending', NULL, $6::jsonb)
+         RETURNING id`,
+        [tenantId, customerId, subscriptionId, domainName, tld, domainMetadata]
+      );
+
+      const domainId = domainResult.rows[0].id;
+
+      // Backfill metadata with domain linkage
+      await client.query(
+        `UPDATE subscriptions 
+         SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('domainId', $1)
+         WHERE id = $2`,
+        [domainId, subscriptionId]
+      );
+
+      await client.query('COMMIT');
+      transactionStarted = false;
+
+      const paymentRequired = subscriptionPrice > 0;
+
+      const autoProvision =
+        typeof req.body.autoProvision !== 'undefined'
+          ? Boolean(req.body.autoProvision)
+          : process.env.MARKETING_AUTO_PROVISION === 'true';
+
+      const shouldAutoProvision = autoProvision || !paymentRequired;
+
+      let provisioningResult = null;
+      if (shouldAutoProvision) {
+        try {
+          provisioningResult = await provisionHostingForSubscription(subscriptionId, {
+            requestedBy: 'marketing-checkout',
+          });
+        } catch (provisioningError) {
+          logger.error('Auto provisioning failed after checkout intent', {
+            subscriptionId,
+            error: provisioningError.message,
+          });
+        }
+      }
+
+      const autoProvisioned = Boolean(provisioningResult?.success);
+
+      const checkoutBaseUrl =
+        process.env.STRIPE_CHECKOUT_SANDBOX_URL || 'https://checkout.stripe.com/pay/test-session';
+      const checkoutUrl = paymentRequired
+        ? `${checkoutBaseUrl}?session_id=${checkoutSessionId}`
+        : process.env.MARKETING_TEST_REDIRECT_URL ||
+          `https://migrahosting.com/thank-you?session_id=${checkoutSessionId}`;
+
+      res.status(201).json({
+        success: true,
+        data: {
+          checkoutUrl,
+          subscriptionId,
+          customerId,
+          domainId,
+          status: paymentRequired ? (autoProvisioned ? 'active' : 'pending_payment') : 'active',
+          autoProvisioned,
+          paymentRequired,
+          price: subscriptionPrice,
+          originalPrice: calculatedPrice,
+          testMode: isTestMode,
+          overrideDiscountApplied,
+          provisioning: provisioningResult,
+        },
+      });
+    } catch (error) {
+      if (transactionStarted) {
+        await client.query('ROLLBACK');
+      }
+      logger.error('Checkout intent creation failed', { error });
+      res.status(500).json({ error: 'Failed to create checkout intent' });
+    } finally {
+      client.release();
+    }
+  }
+);
 
 /**
  * POST /api/marketing/accounts/create

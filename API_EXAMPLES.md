@@ -30,6 +30,36 @@ Response:
 }
 ```
 
+## Marketing Checkout Intent (Test Mode)
+
+Use the marketing API key (`x-api-key`) to create a checkout intent from the marketing site. Test mode or an override discount code can bypass real payments.
+
+```bash
+curl -X POST https://migrapanel.com/api/marketing/checkout-intent \
+  -H "x-api-key: MK_xxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "planSlug": "shared_starter",
+    "billingCycle": "monthly",
+    "domain": "example.com",
+    "domainMode": "new_registration",
+    "testMode": true,
+    "promoCode": "OVERRIDE100",
+    "customer": {
+      "email": "client@example.com",
+      "firstName": "Jane",
+      "lastName": "Doe"
+    },
+    "account": {
+      "password": "ClientPanelPassword123!"
+    }
+  }'
+```
+
+- `testMode: true` or `MARKETING_TEST_MODE=true` forces a zero-dollar checkout and auto-provisions immediately.
+- `promoCode` matching `MARKETING_OVERRIDE_CODE` also zeroes the price while keeping audit metadata.
+- Response fields `paymentRequired`, `price`, `originalPrice`, and `autoProvisioned` indicate how the flow was handled.
+
 ## Products
 
 ### Create a Hosting Product
