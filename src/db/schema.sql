@@ -211,16 +211,16 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 );
 
 -- Create indexes for performance
-CREATE INDEX idx_users_tenant_email ON users(tenant_id, email);
-CREATE INDEX idx_products_tenant_type ON products(tenant_id, type);
-CREATE INDEX idx_subscriptions_customer ON subscriptions(customer_id);
-CREATE INDEX idx_subscriptions_next_billing ON subscriptions(next_billing_date);
-CREATE INDEX idx_invoices_customer ON invoices(customer_id);
-CREATE INDEX idx_invoices_status ON invoices(status);
-CREATE INDEX idx_payments_invoice ON payments(invoice_id);
-CREATE INDEX idx_domains_customer ON domains(customer_id);
-CREATE INDEX idx_domains_expiry ON domains(expiry_date);
-CREATE INDEX idx_audit_logs_tenant_created ON audit_logs(tenant_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_users_tenant_email ON users(tenant_id, email);
+CREATE INDEX IF NOT EXISTS idx_products_tenant_type ON products(tenant_id, type);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_customer ON subscriptions(customer_id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_next_billing ON subscriptions(next_billing_date);
+CREATE INDEX IF NOT EXISTS idx_invoices_customer ON invoices(customer_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
+CREATE INDEX IF NOT EXISTS idx_payments_invoice ON payments(invoice_id);
+CREATE INDEX IF NOT EXISTS idx_domains_customer ON domains(customer_id);
+CREATE INDEX IF NOT EXISTS idx_domains_expiry ON domains(expiry_date);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant_created ON audit_logs(tenant_id, created_at);
 
 -- Create updated_at trigger function
 CREATE OR REPLACE FUNCTION update_updated_at_column()

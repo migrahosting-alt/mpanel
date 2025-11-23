@@ -242,27 +242,27 @@ CREATE TABLE IF NOT EXISTS server_metrics (
 );
 
 -- Create indexes for performance
-CREATE INDEX idx_servers_tenant ON servers(tenant_id);
-CREATE INDEX idx_servers_status ON servers(status);
-CREATE INDEX idx_websites_tenant_customer ON websites(tenant_id, customer_id);
-CREATE INDEX idx_websites_server ON websites(server_id);
-CREATE INDEX idx_websites_primary_domain ON websites(primary_domain);
-CREATE INDEX idx_dns_zones_name ON dns_zones(name);
-CREATE INDEX idx_dns_records_zone ON dns_records(zone_id);
-CREATE INDEX idx_dns_records_name_type ON dns_records(name, type);
-CREATE INDEX idx_mailboxes_email ON mailboxes(email);
-CREATE INDEX idx_mailboxes_domain ON mailboxes(domain_id);
-CREATE INDEX idx_databases_server ON databases(server_id);
-CREATE INDEX idx_databases_website ON databases(website_id);
-CREATE INDEX idx_ftp_accounts_server_username ON ftp_accounts(server_id, username);
-CREATE INDEX idx_cron_jobs_server ON cron_jobs(server_id);
-CREATE INDEX idx_cron_jobs_website ON cron_jobs(website_id);
-CREATE INDEX idx_cron_jobs_next_run ON cron_jobs(next_run) WHERE enabled = TRUE;
-CREATE INDEX idx_backups_source ON backups(source_id, backup_type);
-CREATE INDEX idx_backups_expires ON backups(expires_at);
-CREATE INDEX idx_jobs_status ON jobs(status);
-CREATE INDEX idx_jobs_scheduled ON jobs(scheduled_at) WHERE status = 'pending';
-CREATE INDEX idx_server_metrics_server_time ON server_metrics(server_id, metric_time DESC);
+CREATE INDEX IF NOT EXISTS idx_servers_tenant ON servers(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_servers_status ON servers(status);
+CREATE INDEX IF NOT EXISTS idx_websites_tenant_customer ON websites(tenant_id, customer_id);
+CREATE INDEX IF NOT EXISTS idx_websites_server ON websites(server_id);
+CREATE INDEX IF NOT EXISTS idx_websites_primary_domain ON websites(primary_domain);
+CREATE INDEX IF NOT EXISTS idx_dns_zones_name ON dns_zones(name);
+CREATE INDEX IF NOT EXISTS idx_dns_records_zone ON dns_records(zone_id);
+CREATE INDEX IF NOT EXISTS idx_dns_records_name_type ON dns_records(name, type);
+CREATE INDEX IF NOT EXISTS idx_mailboxes_email ON mailboxes(email);
+CREATE INDEX IF NOT EXISTS idx_mailboxes_domain ON mailboxes(domain_id);
+CREATE INDEX IF NOT EXISTS idx_databases_server ON databases(server_id);
+CREATE INDEX IF NOT EXISTS idx_databases_website ON databases(website_id);
+CREATE INDEX IF NOT EXISTS idx_ftp_accounts_server_username ON ftp_accounts(server_id, username);
+CREATE INDEX IF NOT EXISTS idx_cron_jobs_server ON cron_jobs(server_id);
+CREATE INDEX IF NOT EXISTS idx_cron_jobs_website ON cron_jobs(website_id);
+CREATE INDEX IF NOT EXISTS idx_cron_jobs_next_run ON cron_jobs(next_run) WHERE enabled = TRUE;
+CREATE INDEX IF NOT EXISTS idx_backups_source ON backups(source_id, backup_type);
+CREATE INDEX IF NOT EXISTS idx_backups_expires ON backups(expires_at);
+CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
+CREATE INDEX IF NOT EXISTS idx_jobs_scheduled ON jobs(scheduled_at) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS idx_server_metrics_server_time ON server_metrics(server_id, metric_time DESC);
 
 -- Apply updated_at triggers
 CREATE TRIGGER update_servers_updated_at BEFORE UPDATE ON servers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
