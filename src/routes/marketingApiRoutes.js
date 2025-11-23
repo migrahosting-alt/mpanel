@@ -309,12 +309,56 @@ router.post(
 
       const autoProvisioned = Boolean(provisioningResult?.success);
 
-      const checkoutBaseUrl =
-        process.env.STRIPE_CHECKOUT_SANDBOX_URL || 'https://checkout.stripe.com/pay/test-session';
-      const checkoutUrl = paymentRequired
-        ? `${checkoutBaseUrl}?session_id=${checkoutSessionId}`
-        : process.env.MARKETING_TEST_REDIRECT_URL ||
+      let checkoutUrl;
+      
+      if (paymentRequired) {
+        // Create Stripe Checkout Session for real payment
+        const stripe = (await import('stripe')).default;
+        const stripeClient = stripe(process.env.STRIPE_SECRET_KEY);
+
+        const session = await stripeClient.checkout.sessions.create({
+          mode: 'payment',
+          payment_method_types: ['card'],
+          customer_email: customer.email,
+          line_items: [
+            {
+              price_data: {
+                currency: product.currency?.toLowerCase() || 'usd',
+                product_data: {
+                  name: product.name,
+                  description: `${billingCycle} billing`,
+                },
+                unit_amount: Math.round(subscriptionPrice * 100), // Convert to cents
+              },
+              quantity: 1,
+            },
+          ],
+          metadata: {
+            subscriptionId: subscriptionId.toString(),
+            customerId: customerId.toString(),
+            domainId: domainId.toString(),
+            planSlug,
+            billingCycle,
+            tenantId: tenantId.toString(),
+          },
+          success_url: `https://migrahosting.com/thank-you?session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `https://migrahosting.com/checkout?canceled=true`,
+        });
+
+        checkoutUrl = session.url;
+
+        // Update subscription with Stripe session ID
+        await client.query(
+          `UPDATE subscriptions 
+           SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('stripeSessionId', $1)
+           WHERE id = $2`,
+          [session.id, subscriptionId]
+        );
+      } else {
+        // Test mode or free - redirect to thank you page
+        checkoutUrl = process.env.MARKETING_TEST_REDIRECT_URL ||
           `https://migrahosting.com/thank-you?session_id=${checkoutSessionId}`;
+      }
 
       res.status(201).json({
         success: true,
