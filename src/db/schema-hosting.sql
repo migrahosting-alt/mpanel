@@ -265,12 +265,21 @@ CREATE INDEX IF NOT EXISTS idx_jobs_scheduled ON jobs(scheduled_at) WHERE status
 CREATE INDEX IF NOT EXISTS idx_server_metrics_server_time ON server_metrics(server_id, metric_time DESC);
 
 -- Apply updated_at triggers
+DROP TRIGGER IF EXISTS update_servers_updated_at ON servers;
 CREATE TRIGGER update_servers_updated_at BEFORE UPDATE ON servers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DROP TRIGGER IF EXISTS update_websites_updated_at ON websites;
 CREATE TRIGGER update_websites_updated_at BEFORE UPDATE ON websites FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DROP TRIGGER IF EXISTS update_dns_zones_updated_at ON dns_zones;
 CREATE TRIGGER update_dns_zones_updated_at BEFORE UPDATE ON dns_zones FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DROP TRIGGER IF EXISTS update_dns_records_updated_at ON dns_records;
 CREATE TRIGGER update_dns_records_updated_at BEFORE UPDATE ON dns_records FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DROP TRIGGER IF EXISTS update_mailboxes_updated_at ON mailboxes;
 CREATE TRIGGER update_mailboxes_updated_at BEFORE UPDATE ON mailboxes FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DROP TRIGGER IF EXISTS update_databases_updated_at ON databases;
 CREATE TRIGGER update_databases_updated_at BEFORE UPDATE ON databases FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DROP TRIGGER IF EXISTS update_ftp_accounts_updated_at ON ftp_accounts;
 CREATE TRIGGER update_ftp_accounts_updated_at BEFORE UPDATE ON ftp_accounts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DROP TRIGGER IF EXISTS update_cron_jobs_updated_at ON cron_jobs;
 CREATE TRIGGER update_cron_jobs_updated_at BEFORE UPDATE ON cron_jobs FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DROP TRIGGER IF EXISTS update_jobs_updated_at ON jobs;
 CREATE TRIGGER update_jobs_updated_at BEFORE UPDATE ON jobs FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
