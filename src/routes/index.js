@@ -234,8 +234,8 @@ router.use('/referrals', referralRoutes);
 router.use('/kb', knowledgeBaseRoutes);
 router.use('/sessions', sessionRoutes);
 router.use('/white-label', whiteLabelRoutes);
-router.use('/marketing', marketingRoutes);
-router.use('/marketing-api', marketingApiRoutes);  // Marketing website integration
+router.use('/marketing', marketingApiRoutes);  // Marketing website integration API
+router.use('/marketing-internal', marketingRoutes);  // Internal marketing routes
 router.use('/admin/cron', adminCronRoutes);
 
 // HR & Employee Management System
