@@ -207,6 +207,24 @@ app.get('/api/live', livenessHandler);
 // API routes
 app.use('/api', routes);
 
+// Static file cache-busting middleware (prevent old file caching)
+app.use((req, res, next) => {
+  // For static assets (JS, CSS, images), set aggressive no-cache headers
+  if (req.path.match(/\.(js|css|png|jpg|jpeg|gif|svg|woff|woff2|ttf|eot|ico)$/)) {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+  }
+  // For API responses, also prevent caching
+  if (req.path.startsWith('/api/')) {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
+  next();
+});
+
 // Root endpoint
 app.get('/', (req, res) => {
   res.json({
