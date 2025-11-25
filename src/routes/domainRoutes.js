@@ -1,6 +1,7 @@
 import express from 'express';
 import { authenticateToken } from '../middleware/auth.js';
 import { createDNSZone, deleteDNSZone } from '../services/provisioning/dns.js';
+import pool from '../db/index.js';
 const router = express.Router();
 
 // Get all domains for authenticated user
@@ -12,7 +13,7 @@ router.get('/', authenticateToken, async (req, res) => {
     let params;
     
     if (role === 'admin') {
-      // Admins see all domains
+      // Admins see all domains for their tenant
       query = `
         SELECT d.*, 
                c.company_name as customer_company,
@@ -21,12 +22,13 @@ router.get('/', authenticateToken, async (req, res) => {
                u.last_name
         FROM domains d
         LEFT JOIN customers c ON d.customer_id = c.id
-        LEFT JOIN users u ON d.user_id = u.id
+        LEFT JOIN users u ON c.user_id = u.id
+        WHERE d.tenant_id = $1
         ORDER BY d.created_at DESC
       `;
-      params = [];
+      params = [tenant_id];
     } else {
-      // Regular users see only their domains
+      // Regular users see only their domains (via customer_id)
       query = `
         SELECT d.*, 
                c.company_name as customer_company,
@@ -35,11 +37,11 @@ router.get('/', authenticateToken, async (req, res) => {
                u.last_name
         FROM domains d
         LEFT JOIN customers c ON d.customer_id = c.id
-        LEFT JOIN users u ON d.user_id = u.id
-        WHERE d.tenant_id = $1 AND d.user_id = $2
+        LEFT JOIN users u ON c.user_id = u.id
+        WHERE d.tenant_id = $1
         ORDER BY d.created_at DESC
       `;
-      params = [tenant_id, user_id];
+      params = [tenant_id];
     }
     
     const result = await pool.query(query, params);
@@ -66,10 +68,10 @@ router.get('/:id', authenticateToken, async (req, res) => {
                u.email as customer_email
         FROM domains d
         LEFT JOIN customers c ON d.customer_id = c.id
-        LEFT JOIN users u ON d.user_id = u.id
-        WHERE d.id = $1
+        LEFT JOIN users u ON c.user_id = u.id
+        WHERE d.id = $1 AND d.tenant_id = $2
       `;
-      params = [id];
+      params = [id, tenant_id];
     } else {
       query = `
         SELECT d.*, 
@@ -77,10 +79,10 @@ router.get('/:id', authenticateToken, async (req, res) => {
                u.email as customer_email
         FROM domains d
         LEFT JOIN customers c ON d.customer_id = c.id
-        LEFT JOIN users u ON d.user_id = u.id
-        WHERE d.id = $1 AND d.tenant_id = $2 AND d.user_id = $3
+        LEFT JOIN users u ON c.user_id = u.id
+        WHERE d.id = $1 AND d.tenant_id = $2
       `;
-      params = [id, tenant_id, user_id];
+      params = [id, tenant_id];
     }
     
     const result = await pool.query(query, params);

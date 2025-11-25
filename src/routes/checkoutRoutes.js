@@ -5,23 +5,14 @@ import {
   createCheckoutSession,
   getCheckoutSession,
   handleCheckoutSuccess,
-  getOrders,
-  getOrder,
 } from '../controllers/checkoutController.js';
 
 const router = express.Router();
 
-// All routes require authentication
-router.use(authenticateToken);
-
-// Checkout routes
+// Public checkout routes (no auth required for marketing site)
 router.post('/create-session', createCheckoutSession);
 router.get('/session/:sessionId', getCheckoutSession);
 router.post('/success', handleCheckoutSuccess);
-
-// Order routes
-router.get('/orders', getOrders);
-router.get('/orders/:id', getOrder);
 
 export default router;
 

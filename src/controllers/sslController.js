@@ -15,27 +15,23 @@ import path from 'path';
  */
 export const getCertificates = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const isAdmin = req.user.role === 'admin';
+    const tenantId = req.user.tenantId || req.user.tenant_id;
 
     let query = `
       SELECT 
         c.*,
-        u.email as user_email,
+        cu.company_name,
+        u.email as customer_email,
         EXTRACT(DAY FROM (c.expires_at - NOW())) as days_until_expiry
       FROM ssl_certificates c
-      LEFT JOIN users u ON c.user_id = u.id
+      LEFT JOIN customers cu ON c.customer_id = cu.id
+      LEFT JOIN users u ON cu.user_id = u.id
+      WHERE c.tenant_id = $1
     `;
-
-    const params = [];
-    if (!isAdmin) {
-      query += ` WHERE c.user_id = $1`;
-      params.push(userId);
-    }
 
     query += ` ORDER BY c.created_at DESC`;
 
-    const result = await pool.query(query, params);
+    const result = await pool.query(query, [tenantId]);
 
     res.json({ certificates: result.rows });
   } catch (error) {

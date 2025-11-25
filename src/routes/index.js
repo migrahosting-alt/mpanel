@@ -97,6 +97,7 @@ router.get('/health', (req, res) => {
 // Public routes (no auth required)
 router.use('/public', publicRoutes);
 
+
 // Auth routes (login, register, password reset)
 router.use('/auth', authRoutes);
 

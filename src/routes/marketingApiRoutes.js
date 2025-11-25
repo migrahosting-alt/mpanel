@@ -22,6 +22,14 @@ import * as emailTemplates from '../services/emailTemplates.js';
 import { provisionHostingForSubscription } from '../services/provisioning/hosting.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/authorization.js';
+import {
+  getPlanById,
+  getPlanBySlug,
+  getAddonById,
+  getCouponByCode,
+  isCouponValid,
+  calculateTotals,
+} from '../config/pricing-config.js';
 
 const router = express.Router();
 
@@ -111,6 +119,191 @@ const parseDomain = (domain) => {
 // ===========================================
 
 /**
+ * POST /api/marketing/validate-coupon
+ * Validate a promo/coupon code and return discount information
+ * @access Marketing API (authenticated via API key)
+ */
+router.post(
+  '/validate-coupon',
+  marketingApiLimiter,
+  authenticateMarketingApi,
+  async (req, res) => {
+    try {
+      const { code, planId } = req.body;
+
+      if (!code) {
+        return res.status(400).json({ error: 'Coupon code is required' });
+      }
+
+      // Get coupon from pricing-config.js
+      const coupon = getCouponByCode(code);
+
+      if (!coupon) {
+        return res.status(404).json({ 
+          error: 'Invalid coupon code',
+          valid: false 
+        });
+      }
+
+      // Check if coupon is expired
+      if (!isCouponValid(coupon)) {
+        return res.status(404).json({ 
+          error: 'Coupon has expired',
+          valid: false 
+        });
+      }
+
+      // Calculate discount preview if planId provided
+      let discountPreview = null;
+      if (planId) {
+        const plan = getPlanById(planId);
+
+        if (plan) {
+          const { subtotal, discount, total } = calculateTotals({
+            plan,
+            addons: [],
+            billingCycle: 'monthly',
+            trialActive: false,
+            coupon
+          });
+
+          discountPreview = {
+            basePrice: subtotal,
+            discountAmount: discount,
+            finalPrice: total
+          };
+        }
+      }
+
+      logger.info('Coupon validated successfully', { code: coupon.code });
+
+      res.json({
+        success: true,
+        valid: true,
+        coupon: {
+          code: coupon.code,
+          type: coupon.type,
+          value: coupon.value,
+          description: coupon.type === 'percent' 
+            ? `${coupon.value}% off` 
+            : coupon.type === 'flat'
+            ? `$${coupon.value} off`
+            : 'Free first month',
+          appliesToProducts: coupon.appliesToProducts,
+          minSubtotal: coupon.minSubtotal,
+          firstInvoiceOnly: coupon.firstInvoiceOnly,
+          expiresAt: coupon.expiresAt
+        },
+        discountPreview
+      });
+    } catch (error) {
+      logger.error('Coupon validation error:', error);
+      res.status(500).json({ error: 'Failed to validate coupon' });
+    }
+  }
+);
+
+/**
+ * GET /api/marketing/checkout-session
+ * Get checkout session status for success page polling
+ * @access Marketing API Key
+ */
+router.get(
+  '/checkout-session',
+  marketingApiLimiter,
+  authenticateMarketingApi,
+  async (req, res) => {
+    try {
+      const { session_id } = req.query;
+
+      if (!session_id) {
+        return res.status(400).json({ error: 'session_id is required' });
+      }
+
+      // Find subscription by Stripe session ID or internal session ID
+      const result = await pool.query(
+        `SELECT 
+          s.id as subscription_id,
+          s.status as subscription_status,
+          s.price,
+          s.billing_cycle,
+          s.metadata,
+          s.next_billing_date,
+          c.id as customer_id,
+          u.id as user_id,
+          u.email,
+          u.first_name,
+          u.last_name,
+          p.name as plan_name,
+          p.metadata as plan_metadata,
+          d.domain_name,
+          d.status as domain_status
+         FROM subscriptions s
+         JOIN customers c ON s.customer_id = c.id
+         JOIN users u ON c.user_id = u.id
+         JOIN products p ON s.product_id = p.id
+         LEFT JOIN domains d ON d.id::text = s.metadata->>'domainId'
+         WHERE s.tenant_id = $1 
+         AND (s.metadata->>'checkoutSessionId' = $2 OR s.metadata->>'stripeSessionId' = $2)
+         LIMIT 1`,
+        [req.tenantId, session_id]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ 
+          error: 'Session not found',
+          sessionId: session_id 
+        });
+      }
+
+      const data = result.rows[0];
+      
+      // Determine overall status
+      let status = 'pending';
+      if (data.subscription_status === 'active') {
+        status = 'paid';
+      } else if (data.subscription_status === 'cancelled' || data.subscription_status === 'failed') {
+        status = 'failed';
+      }
+
+      // Get panel URL
+      const panelUrl = process.env.FRONTEND_URL || 'https://mpanel.migrahosting.com';
+
+      res.json({
+        success: true,
+        data: {
+          sessionId: session_id,
+          status,
+          subscription: {
+            id: data.subscription_id,
+            plan: data.plan_name,
+            status: data.subscription_status,
+            price: parseFloat(data.price),
+            billingCycle: data.billing_cycle,
+            nextBillingDate: data.next_billing_date,
+            domain: data.domain_name,
+            domainStatus: data.domain_status,
+          },
+          customer: {
+            id: data.customer_id,
+            email: data.email,
+            name: `${data.first_name || ''} ${data.last_name || ''}`.trim(),
+          },
+          portal: {
+            url: panelUrl,
+            username: data.email,
+          },
+          metadata: data.metadata || {}
+        }
+      });
+    } catch (error) {
+      logger.error('Checkout session status error:', error);
+      res.status(500).json({ error: 'Failed to retrieve session status' });
+    }
+  }
+);
+
+/**
  * POST /api/marketing/checkout-intent
  * Create subscription + Stripe checkout session placeholder
  * @access Marketing API Key
@@ -125,60 +318,103 @@ router.post(
 
     try {
       const {
-        planSlug,
+        planId,
         billingCycle = 'monthly',
-        domain,
-        domainMode = 'new_registration',
+        trialActive = false,
+        addonIds = [],
+        couponCode,
         customer,
+        domain,
         account,
-        testMode: testModeFlag,
-        promoCode,
       } = req.body;
 
-      if (!planSlug || !domain || !customer?.email || !account?.password) {
+      // Validation
+      if (!planId || !customer?.email || !account?.password) {
+        logger.warn('Checkout validation failed', {
+          planId: !!planId,
+          customerEmail: !!customer?.email,
+          accountPassword: !!account?.password
+        });
         return res.status(400).json({
-          error: 'planSlug, domain, customer.email, and account.password are required',
+          error: 'Missing required fields',
+          details: {
+            planId: !planId ? 'Plan selection is required' : undefined,
+            email: !customer?.email ? 'Email is required' : undefined,
+            password: !account?.password ? 'Password is required' : undefined
+          }
         });
       }
 
-      if (!['new_registration', 'external'].includes(domainMode)) {
-        return res.status(400).json({ error: 'domainMode must be new_registration or external' });
+      // Get plan from pricing-config.js
+      const plan = getPlanById(planId);
+      if (!plan) {
+        logger.error('Plan not found in pricing config', { planId });
+        return res.status(404).json({ 
+          error: 'Plan not found',
+          details: `Plan '${planId}' does not exist in pricing configuration`
+        });
       }
+
+      // Get addons from pricing-config.js
+      const selectedAddons = addonIds
+        .map(addonId => getAddonById(addonId))
+        .filter(addon => addon !== undefined);
+
+      // Validate addons apply to this product type
+      const invalidAddons = selectedAddons.filter(
+        addon => !addon.appliesTo.includes(plan.productType)
+      );
+      if (invalidAddons.length > 0) {
+        return res.status(400).json({
+          error: 'Invalid addons for this plan',
+          details: `Addons ${invalidAddons.map(a => a.id).join(', ')} do not apply to ${plan.productType} plans`
+        });
+      }
+
+      // Get coupon from pricing-config.js if provided
+      let coupon = null;
+      if (couponCode) {
+        coupon = getCouponByCode(couponCode);
+        if (!coupon || !isCouponValid(coupon)) {
+          return res.status(400).json({
+            error: 'Invalid or expired coupon code',
+            code: couponCode
+          });
+        }
+      }
+
+      // Calculate totals using pricing-config.js
+      const { subtotal, discount, total } = calculateTotals({
+        plan,
+        addons: selectedAddons,
+        billingCycle,
+        trialActive,
+        coupon
+      });
+
+      logger.info('Checkout calculation', {
+        planId: plan.id,
+        addonIds,
+        couponCode,
+        subtotal,
+        discount,
+        total,
+        trialActive
+      });
 
       const tenantId = req.tenantId;
-      const envTestMode = process.env.MARKETING_TEST_MODE === 'true';
-      const isTestMode = Boolean(testModeFlag) || envTestMode;
-      const overrideDiscountCode = process.env.MARKETING_OVERRIDE_CODE;
-      const overrideDiscountApplied =
-        Boolean(promoCode && overrideDiscountCode) &&
-        promoCode.toLowerCase() === overrideDiscountCode.toLowerCase();
 
-      // Look up product by slug (metadata.slug) or name fallback
-      const productResult = await client.query(
-        `SELECT * FROM products
-         WHERE tenant_id = $1
-         AND (
-           LOWER(metadata ->> 'slug') = LOWER($2)
-           OR LOWER(name) = LOWER($2)
-         )
-         LIMIT 1`,
-        [tenantId, planSlug]
-      );
-
-      if (productResult.rows.length === 0) {
-        return res.status(404).json({ error: 'Plan not found' });
-      }
-
-      const product = productResult.rows[0];
-      const calculatedPrice = calculateCyclePrice(product, billingCycle);
-      const subscriptionPrice = overrideDiscountApplied || isTestMode ? 0 : calculatedPrice;
-      const interval = getBillingInterval(billingCycle);
+      // Hash password
       const bcrypt = (await import('bcrypt')).default;
       const passwordHash = await bcrypt.hash(account.password, 10);
-      const { domainName, tld } = parseDomain(domain);
+
+      // Parse domain
+      const domainMode = domain?.mode || 'subdomain';
+      const domainValue = domain?.value || `${customer.email.split('@')[0]}-${Date.now()}.migrahosting.com`;
+      const { domainName, tld } = parseDomain(domainValue);
 
       if (!domainName || !tld) {
-        return res.status(400).json({ error: 'Invalid domain format supplied' });
+        return res.status(400).json({ error: 'Invalid domain format' });
       }
 
       await client.query('BEGIN');
@@ -195,7 +431,13 @@ router.post(
            status = 'active',
            updated_at = NOW()
          RETURNING id`,
-        [tenantId, customer.email.toLowerCase(), passwordHash, customer.firstName || null, customer.lastName || null]
+        [
+          tenantId, 
+          customer.email.toLowerCase(), 
+          passwordHash, 
+          customer.firstName || null, 
+          customer.lastName || null
+        ]
       );
 
       const userId = userResult.rows[0].id;
@@ -213,70 +455,122 @@ router.post(
           `INSERT INTO customers (tenant_id, user_id, currency)
            VALUES ($1, $2, $3)
            RETURNING id`,
-          [tenantId, userId, product.currency || 'USD']
+          [tenantId, userId, 'USD']
         );
         customerId = customerInsert.rows[0].id;
       }
 
-      // Create subscription placeholder
+      // Find or create product in database matching pricing-config plan
+      let productResult = await client.query(
+        `SELECT id FROM products 
+         WHERE tenant_id = $1 
+         AND (metadata->>'pricingConfigId' = $2 OR LOWER(name) = LOWER($3))
+         LIMIT 1`,
+        [tenantId, plan.id, plan.name]
+      );
+
+      let productId;
+      if (productResult.rows.length === 0) {
+        // Create product in database from pricing-config
+        const productInsert = await client.query(
+          `INSERT INTO products (tenant_id, name, description, type, price, currency, is_active, metadata)
+           VALUES ($1, $2, $3, $4, $5, $6, true, $7::jsonb)
+           RETURNING id`,
+          [
+            tenantId,
+            plan.name,
+            plan.description,
+            plan.productType,
+            plan.basePrice.monthly,
+            'USD',
+            JSON.stringify({ pricingConfigId: plan.id, slug: plan.slug })
+          ]
+        );
+        productId = productInsert.rows[0].id;
+      } else {
+        productId = productResult.rows[0].id;
+      }
+
+      // Create subscription
       const checkoutSessionId = `sess_${crypto.randomBytes(12).toString('hex')}`;
-      const subscriptionMetadata = JSON.stringify({
-        planSlug,
+      const subscriptionMetadata = {
+        planId: plan.id,
+        planSlug: plan.slug,
         checkoutSessionId,
         domainMode,
-        marketingSource: req.body.marketingSource || null,
-        testMode: isTestMode,
-        promoCode: promoCode || null,
-        overrideDiscountApplied,
-      });
+        trialActive,
+        addonIds,
+        couponCode: coupon?.code || null,
+        discount,
+        subtotal,
+        originalPrice: subtotal,
+      };
 
-      const subscriptionStatus = subscriptionPrice > 0 ? 'pending_payment' : 'active';
+      const subscriptionStatus = total > 0 ? 'pending_payment' : 'active';
+
+      // Calculate next billing date
+      const nextBillingDate = new Date();
+      const nextDueDate = new Date();
+      
+      if (trialActive && plan.trialEnabled) {
+        // Trial period: next billing is after trial days
+        nextBillingDate.setDate(nextBillingDate.getDate() + plan.trialDays);
+        nextDueDate.setDate(nextDueDate.getDate() + plan.trialDays);
+      } else {
+        // Regular billing
+        if (billingCycle === 'yearly') {
+          nextBillingDate.setFullYear(nextBillingDate.getFullYear() + 1);
+          nextDueDate.setFullYear(nextDueDate.getFullYear() + 1);
+        } else {
+          nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
+          nextDueDate.setMonth(nextDueDate.getMonth() + 1);
+        }
+      }
 
       const subscriptionResult = await client.query(
         `INSERT INTO subscriptions (
             tenant_id, customer_id, product_id, status,
             billing_cycle, price, next_billing_date, next_due_date, metadata
         )
-        VALUES (
-          $1, $2, $3, $4, $5, $6,
-          NOW() + INTERVAL '${interval}', NOW() + INTERVAL '${interval}', $7::jsonb
-        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
          RETURNING id`,
         [
           tenantId,
           customerId,
-          product.id,
+          productId,
           subscriptionStatus,
           billingCycle,
-          subscriptionPrice,
-          subscriptionMetadata,
+          total,
+          nextBillingDate,
+          nextDueDate,
+          JSON.stringify(subscriptionMetadata),
         ]
       );
 
       const subscriptionId = subscriptionResult.rows[0].id;
 
-      // Create domain record in pending state
-      const domainMetadata = JSON.stringify({
+      // Create domain record
+      const domainMetadata = {
         domainMode,
         requestedAt: new Date().toISOString(),
-      });
+      };
 
       const domainResult = await client.query(
         `INSERT INTO domains (
             tenant_id, customer_id, subscription_id, domain_name, tld,
-            status, registrar, metadata
+            status, metadata
          )
-         VALUES ($1, $2, $3, $4, $5, 'pending', NULL, $6::jsonb)
+         VALUES ($1, $2, $3, $4, $5, 'pending', $6::jsonb)
          RETURNING id`,
-        [tenantId, customerId, subscriptionId, domainName, tld, domainMetadata]
+        [tenantId, customerId, subscriptionId, domainName, tld, JSON.stringify(domainMetadata)]
       );
 
       const domainId = domainResult.rows[0].id;
 
-      // Backfill metadata with domain linkage
+      // Update subscription with domain ID
       await client.query(
         `UPDATE subscriptions 
-         SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('domainId', $1)
+         SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('domainId', $1::text)
          WHERE id = $2`,
         [domainId, subscriptionId]
       );
@@ -284,80 +578,114 @@ router.post(
       await client.query('COMMIT');
       transactionStarted = false;
 
-      const paymentRequired = subscriptionPrice > 0;
+      const paymentRequired = total > 0;
 
-      const autoProvision =
-        typeof req.body.autoProvision !== 'undefined'
-          ? Boolean(req.body.autoProvision)
-          : process.env.MARKETING_AUTO_PROVISION === 'true';
-
-      const shouldAutoProvision = autoProvision || !paymentRequired;
-
-      let provisioningResult = null;
-      if (shouldAutoProvision) {
-        try {
-          provisioningResult = await provisionHostingForSubscription(subscriptionId, {
-            requestedBy: 'marketing-checkout',
-          });
-        } catch (provisioningError) {
-          logger.error('Auto provisioning failed after checkout intent', {
-            subscriptionId,
-            error: provisioningError.message,
-          });
-        }
-      }
-
-      const autoProvisioned = Boolean(provisioningResult?.success);
+      logger.info('Subscription created', {
+        subscriptionId,
+        paymentRequired,
+        total,
+        trialActive,
+        planId: plan.id
+      });
 
       let checkoutUrl;
+      let stripeSessionId = null;
       
       if (paymentRequired) {
-        // Create Stripe Checkout Session for real payment
+        // Create Stripe Checkout Session
         const stripe = (await import('stripe')).default;
         const stripeClient = stripe(process.env.STRIPE_SECRET_KEY);
 
-        const session = await stripeClient.checkout.sessions.create({
+        const lineItems = [
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: {
+                name: plan.name,
+                description: `${billingCycle} billing`,
+              },
+              unit_amount: Math.round(plan.basePrice[billingCycle] * 100),
+            },
+            quantity: 1,
+          },
+        ];
+
+        // Add addons as line items
+        selectedAddons.forEach(addon => {
+          lineItems.push({
+            price_data: {
+              currency: 'usd',
+              product_data: {
+                name: addon.name,
+                description: addon.description,
+              },
+              unit_amount: Math.round(addon.price[billingCycle] * 100),
+            },
+            quantity: 1,
+          });
+        });
+
+        const sessionConfig = {
           mode: 'payment',
           payment_method_types: ['card'],
           customer_email: customer.email,
-          line_items: [
-            {
-              price_data: {
-                currency: product.currency?.toLowerCase() || 'usd',
-                product_data: {
-                  name: product.name,
-                  description: `${billingCycle} billing`,
-                },
-                unit_amount: Math.round(subscriptionPrice * 100), // Convert to cents
-              },
-              quantity: 1,
-            },
-          ],
+          line_items: lineItems,
           metadata: {
             subscriptionId: subscriptionId.toString(),
             customerId: customerId.toString(),
             domainId: domainId.toString(),
-            planSlug,
+            planId: plan.id,
             billingCycle,
             tenantId: tenantId.toString(),
           },
-          success_url: `https://migrahosting.com/thank-you?session_id={CHECKOUT_SESSION_ID}`,
-          cancel_url: `https://migrahosting.com/checkout?canceled=true`,
-        });
+          success_url: `https://migrahosting.com/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `https://migrahosting.com/checkout/cancel`,
+        };
 
+        // Apply discount if coupon exists
+        if (coupon && discount > 0) {
+          sessionConfig.discounts = [{
+            coupon: await stripeClient.coupons.create({
+              amount_off: Math.round(discount * 100),
+              currency: 'usd',
+              duration: 'once',
+              name: coupon.code,
+            }).then(c => c.id)
+          }];
+        }
+
+        const session = await stripeClient.checkout.sessions.create(sessionConfig);
         checkoutUrl = session.url;
+        stripeSessionId = session.id;
 
         // Update subscription with Stripe session ID
-        await client.query(
+        await pool.query(
           `UPDATE subscriptions 
-           SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('stripeSessionId', $1)
+           SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('stripeSessionId', $1::text)
            WHERE id = $2`,
           [session.id, subscriptionId]
         );
+
+        logger.info('Stripe session created', {
+          sessionId: session.id,
+          checkoutUrl: session.url,
+          subscriptionId
+        });
       } else {
-        // Test mode or free - redirect to thank you page
-        checkoutUrl = process.env.MARKETING_TEST_REDIRECT_URL ||
-          `https://migrahosting.com/thank-you?session_id=${checkoutSessionId}`;
+        // Free/trial - go directly to success page
+        checkoutUrl = `https://migrahosting.com/checkout/success?session_id=${checkoutSessionId}`;
+        
+        // Auto-activate subscription
+        await pool.query(
+          `UPDATE subscriptions SET status = 'active' WHERE id = $1`,
+          [subscriptionId]
+        );
+
+        logger.info('Free/trial subscription activated', {
+          subscriptionId,
+          trialActive,
+          checkoutSessionId
+        });
       }
 
       res.status(201).json({
@@ -367,22 +695,30 @@ router.post(
           subscriptionId,
           customerId,
           domainId,
-          status: paymentRequired ? (autoProvisioned ? 'active' : 'pending_payment') : 'active',
-          autoProvisioned,
+          status: paymentRequired ? 'pending_payment' : 'active',
           paymentRequired,
-          price: subscriptionPrice,
-          originalPrice: calculatedPrice,
-          testMode: isTestMode,
-          overrideDiscountApplied,
-          provisioning: provisioningResult,
+          price: total,
+          originalPrice: subtotal,
+          discount: discount > 0 ? {
+            amount: discount,
+            code: coupon?.code,
+            finalPrice: total
+          } : null,
+          sessionId: stripeSessionId || checkoutSessionId,
         },
       });
     } catch (error) {
       if (transactionStarted) {
         await client.query('ROLLBACK');
       }
-      logger.error('Checkout intent creation failed', { error });
-      res.status(500).json({ error: 'Failed to create checkout intent' });
+      logger.error('Checkout intent creation failed', { 
+        error: error.message,
+        stack: error.stack
+      });
+      res.status(500).json({ 
+        error: 'Failed to create checkout intent',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
     } finally {
       client.release();
     }
@@ -1095,6 +1431,79 @@ router.post('/admin/api-keys', authenticateToken, requirePermission('api_keys.cr
     res.status(500).json({ error: 'Failed to create API key' });
   }
 });
+
+/**
+ * GET /api/marketing/order-status/:sessionId
+ * Get order/subscription status by checkout session ID
+ * @access Marketing API (authenticated via API key)
+ */
+router.get(
+  '/order-status/:sessionId',
+  marketingApiLimiter,
+  authenticateMarketingApi,
+  async (req, res) => {
+    try {
+      const { sessionId } = req.params;
+
+      const result = await pool.query(
+        `SELECT 
+          s.id as subscription_id,
+          s.status,
+          s.price,
+          s.billing_cycle,
+          s.metadata,
+          c.id as customer_id,
+          u.email,
+          u.first_name,
+          u.last_name,
+          p.name as plan_name,
+          d.domain_name,
+          d.status as domain_status
+         FROM subscriptions s
+         JOIN customers c ON s.customer_id = c.id
+         JOIN users u ON c.user_id = u.id
+         JOIN products p ON s.product_id = p.id
+         LEFT JOIN domains d ON d.id::text = s.metadata->>'domainId'
+         WHERE s.tenant_id = $1 
+         AND (s.metadata->>'checkoutSessionId' = $2 OR s.metadata->>'stripeSessionId' = $2)
+         LIMIT 1`,
+        [req.tenantId, sessionId]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ 
+          error: 'Order not found',
+          sessionId 
+        });
+      }
+
+      const order = result.rows[0];
+      
+      res.json({
+        success: true,
+        data: {
+          subscriptionId: order.subscription_id,
+          status: order.status,
+          customerEmail: order.email,
+          customerName: `${order.first_name || ''} ${order.last_name || ''}`.trim(),
+          planName: order.plan_name,
+          price: parseFloat(order.price),
+          billingCycle: order.billing_cycle,
+          domain: order.domain_name,
+          domainStatus: order.domain_status,
+          promoCode: order.metadata?.promoCode || null,
+          discount: order.metadata?.discountAmount ? {
+            amount: parseFloat(order.metadata.discountAmount),
+            originalPrice: parseFloat(order.metadata.originalPrice)
+          } : null
+        }
+      });
+    } catch (error) {
+      logger.error('Order status lookup error:', error);
+      res.status(500).json({ error: 'Failed to retrieve order status' });
+    }
+  }
+);
 
 /**
  * GET /api/marketing/admin/api-keys

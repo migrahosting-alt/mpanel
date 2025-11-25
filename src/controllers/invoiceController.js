@@ -5,11 +5,10 @@ import StripeService from '../services/StripeService.js';
 import logger from '../config/logger.js';
 import { generateInvoicePDF } from '../services/pdfService.js';
 import pool from '../db/index.js';
-import Stripe from 'stripe';
+import { stripe } from '../config/stripeConfig.js';
 import emailService from '../services/email.js';
 import { shouldSendEmail } from '../controllers/emailPreferencesController.js';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_dummy');
 
 export const createInvoice = async (req, res) => {
   try {
@@ -184,6 +183,10 @@ export const downloadInvoicePDF = async (req, res) => {
  */
 export const createPaymentIntent = async (req, res) => {
   try {
+    if (!stripe) {
+      return res.status(500).json({ error: 'Stripe not configured' });
+    }
+
     const { id } = req.params;
 
     const result = await pool.query(

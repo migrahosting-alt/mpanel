@@ -5,9 +5,7 @@
 
 import pool from '../db/index.js';
 import logger from '../config/logger.js';
-import Stripe from 'stripe';
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+import { stripe } from '../config/stripeConfig.js';
 
 class AdvancedBillingService {
   /**
@@ -200,6 +198,10 @@ class AdvancedBillingService {
    */
   async processInstallment(installmentId, paymentMethodId) {
     try {
+      if (!stripe) {
+        throw new Error('Stripe not configured');
+      }
+
       const result = await pool.query(
         `SELECT i.*, inv.user_id, inv.total
          FROM payment_plan_installments i
@@ -271,6 +273,10 @@ class AdvancedBillingService {
    */
   async processDunning() {
     try {
+      if (!stripe) {
+        throw new Error('Stripe not configured');
+      }
+
       // Get failed invoices that need retry
       const result = await pool.query(
         `SELECT i.*, u.email, u.stripe_customer_id

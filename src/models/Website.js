@@ -50,10 +50,12 @@ class Website {
 
   static async findByTenant(tenantId) {
     const result = await pool.query(
-      `SELECT w.*, s.name as server_name, c.first_name, c.last_name
+      `SELECT w.*, s.name as server_name, s.hostname as server_hostname,
+              c.company_name, u.first_name, u.last_name, u.email as customer_email
        FROM websites w
        LEFT JOIN servers s ON w.server_id = s.id
        LEFT JOIN customers c ON w.customer_id = c.id
+       LEFT JOIN users u ON c.user_id = u.id
        WHERE w.tenant_id = $1 
        ORDER BY w.created_at DESC`,
       [tenantId]

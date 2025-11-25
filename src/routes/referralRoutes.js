@@ -18,7 +18,7 @@ const router = express.Router();
  */
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const data = await referral.getUserReferrals(req.user.id);
+    const data = await referralService.getUserReferrals(req.user.id);
     res.json({ data });
   } catch (error) {
     logger.error('Error getting referrals:', error);
@@ -32,7 +32,7 @@ router.get('/', authenticateToken, async (req, res) => {
  */
 router.post('/create', authenticateToken, async (req, res) => {
   try {
-    const ref = await referral.createReferral(req.user.id, req.user.tenantId);
+    const ref = await referralService.createReferral(req.user.id, req.user.tenantId);
     res.json({ 
       data: ref,
       referralUrl: `${process.env.APP_URL}/signup?ref=${ref.referral_code}`
@@ -49,7 +49,7 @@ router.post('/create', authenticateToken, async (req, res) => {
  */
 router.post('/track/:code', async (req, res) => {
   try {
-    await referral.trackClick(req.params.code, req.ip);
+    await referralService.trackClick(req.params.code, req.ip);
     res.json({ message: 'Click tracked' });
   } catch (error) {
     logger.error('Error tracking click:', error);
@@ -85,7 +85,7 @@ router.get('/validate/:code', async (req, res) => {
  */
 router.get('/admin/stats', authenticateToken, requirePermission('referrals.read'), async (req, res) => {
   try {
-    const stats = await referral.getReferralStats(req.user.tenantId);
+    const stats = await referralService.getReferralStats(req.user.tenantId);
     res.json({ data: stats });
   } catch (error) {
     logger.error('Error getting referral stats:', error);
@@ -124,7 +124,7 @@ router.get('/admin/all', authenticateToken, requirePermission('referrals.read'),
  */
 router.post('/admin/:id/pay', authenticateToken, requirePermission('referrals.update'), async (req, res) => {
   try {
-    const result = await referral.markCommissionPaid(req.params.id);
+    const result = await referralService.markCommissionPaid(req.params.id);
     
     if (result.success) {
       res.json({ message: 'Commission marked as paid' });

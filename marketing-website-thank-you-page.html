@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Thank You - Order Confirmed | MigraHosting</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 60px 40px;
+            max-width: 600px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            text-align: center;
+        }
+        
+        .checkmark {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0 auto 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: scaleIn 0.5s ease-out;
+        }
+        
+        .checkmark svg {
+            width: 50px;
+            height: 50px;
+            stroke: white;
+            stroke-width: 3;
+            fill: none;
+            stroke-dasharray: 100;
+            stroke-dashoffset: 100;
+            animation: drawCheck 0.8s ease-out 0.3s forwards;
+        }
+        
+        @keyframes scaleIn {
+            from { transform: scale(0); }
+            to { transform: scale(1); }
+        }
+        
+        @keyframes drawCheck {
+            to { stroke-dashoffset: 0; }
+        }
+        
+        h1 {
+            font-size: 32px;
+            color: #1a202c;
+            margin-bottom: 20px;
+            font-weight: 700;
+        }
+        
+        .subtitle {
+            font-size: 18px;
+            color: #4a5568;
+            margin-bottom: 40px;
+            line-height: 1.6;
+        }
+        
+        .order-details {
+            background: #f7fafc;
+            border-radius: 12px;
+            padding: 30px;
+            margin: 30px 0;
+            text-align: left;
+        }
+        
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        
+        .detail-row:last-child {
+            border-bottom: none;
+        }
+        
+        .detail-label {
+            color: #718096;
+            font-weight: 500;
+        }
+        
+        .detail-value {
+            color: #1a202c;
+            font-weight: 600;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .spinner {
+            border: 3px solid #f3f4f6;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .btn-container {
+            display: flex;
+            gap: 15px;
+            margin-top: 30px;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            flex: 1;
+            min-width: 200px;
+            padding: 16px 32px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            display: inline-block;
+            cursor: pointer;
+            border: none;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-secondary {
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+        }
+        
+        .btn-secondary:hover {
+            background: #667eea;
+            color: white;
+        }
+        
+        .info-box {
+            background: #edf2f7;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin: 30px 0;
+            text-align: left;
+            border-radius: 8px;
+        }
+        
+        .info-box h3 {
+            color: #1a202c;
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+        
+        .info-box p {
+            color: #4a5568;
+            line-height: 1.6;
+        }
+        
+        .error {
+            color: #e53e3e;
+            background: #fff5f5;
+            border: 1px solid #feb2b2;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        
+        @media (max-width: 600px) {
+            .container {
+                padding: 40px 20px;
+            }
+            
+            h1 {
+                font-size: 24px;
+            }
+            
+            .btn-container {
+                flex-direction: column;
+            }
+            
+            .btn {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="checkmark">
+            <svg viewBox="0 0 52 52">
+                <path d="M14 27l7.5 7.5L38 18"/>
+            </svg>
+        </div>
+        
+        <h1>Payment Successful! 🎉</h1>
+        <p class="subtitle">Thank you for choosing MigraHosting. Your hosting account is being set up.</p>
+        
+        <div id="orderDetails" class="loading">
+            <div class="spinner"></div>
+            <p>Loading order details...</p>
+        </div>
+        
+        <div class="info-box" id="nextSteps" style="display: none;">
+            <h3>📧 What's Next?</h3>
+            <p>
+                1. Check your email for your account credentials<br>
+                2. Your hosting will be provisioned within a few minutes<br>
+                3. You'll receive another email when everything is ready<br>
+                4. Log in to your control panel to manage your hosting
+            </p>
+        </div>
+        
+        <div class="btn-container" style="display: none;" id="actionButtons">
+            <a href="https://mpanel.migrahosting.com" class="btn btn-primary">Access Control Panel</a>
+            <a href="https://migrahosting.com" class="btn btn-secondary">Back to Website</a>
+        </div>
+    </div>
+
+    <script>
+        // Get session_id from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const sessionId = urlParams.get('session_id');
+        const email = urlParams.get('email');
+        const isFree = urlParams.get('free') === 'true';
+        
+        if (!sessionId) {
+            document.getElementById('orderDetails').innerHTML = `
+                <div class="error">
+                    <strong>Error:</strong> No order session found. 
+                    <a href="https://migrahosting.com/pricing">Return to pricing page</a>
+                </div>
+            `;
+        } else {
+            // Fetch order details from API
+            fetch(`https://mpanel.migrahosting.com/api/marketing/order-status/${sessionId}`, {
+                headers: {
+                    'X-API-Key': 'mpanel_marketing_live_2025_secure_key_abc123xyz'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const order = data.data;
+                    
+                    // Display order details
+                    document.getElementById('orderDetails').innerHTML = `
+                        <div class="order-details">
+                            <div class="detail-row">
+                                <span class="detail-label">Order ID:</span>
+                                <span class="detail-value">#${order.subscriptionId.substring(0, 8)}</span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="detail-label">Plan:</span>
+                                <span class="detail-value">${order.planName}</span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="detail-label">Billing:</span>
+                                <span class="detail-value">${order.billingCycle}</span>
+                            </div>
+                            ${order.domain ? `
+                            <div class="detail-row">
+                                <span class="detail-label">Domain:</span>
+                                <span class="detail-value">${order.domain}</span>
+                            </div>
+                            ` : ''}
+                            ${order.discount ? `
+                            <div class="detail-row">
+                                <span class="detail-label">Original Price:</span>
+                                <span class="detail-value">$${order.discount.originalPrice.toFixed(2)}</span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="detail-label">Discount:</span>
+                                <span class="detail-value" style="color: #48bb78;">-$${order.discount.amount.toFixed(2)}</span>
+                            </div>
+                            ` : ''}
+                            <div class="detail-row">
+                                <span class="detail-label">Total ${isFree ? '' : 'Paid'}:</span>
+                                <span class="detail-value" style="font-size: 20px; color: #667eea;">
+                                    $${order.price.toFixed(2)}${order.billingCycle === 'monthly' ? '/mo' : ''}
+                                </span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="detail-label">Status:</span>
+                                <span class="detail-value" style="color: #48bb78; text-transform: capitalize;">
+                                    ${order.status.replace('_', ' ')}
+                                </span>
+                            </div>
+                        </div>
+                    `;
+                    
+                    // Show next steps and buttons
+                    document.getElementById('nextSteps').style.display = 'block';
+                    document.getElementById('actionButtons').style.display = 'flex';
+                    
+                    // Update subtitle
+                    if (email) {
+                        document.querySelector('.subtitle').textContent = 
+                            `A confirmation email has been sent to ${email}`;
+                    }
+                } else {
+                    document.getElementById('orderDetails').innerHTML = `
+                        <div class="error">
+                            <strong>Error:</strong> ${data.error || 'Could not load order details.'}
+                        </div>
+                    `;
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching order:', error);
+                document.getElementById('orderDetails').innerHTML = `
+                    <div class="error">
+                        <strong>Error:</strong> Unable to load order details. Please check your email for confirmation.
+                    </div>
+                `;
+                // Still show the buttons
+                document.getElementById('actionButtons').style.display = 'flex';
+            });
+        }
+    </script>
+</body>
+</html>

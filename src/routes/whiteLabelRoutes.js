@@ -3,6 +3,7 @@ const router = express.Router();
 import whiteLabelService from '../services/whiteLabelService.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/authorization.js';
+import pool from '../db/index.js';
 
 /**
  * White-Label & Reseller Platform Routes
@@ -30,7 +31,7 @@ router.post('/branding', authenticateToken, requirePermission('branding.create')
 // Get branding configuration
 router.get('/branding', authenticateToken, async (req, res) => {
   try {
-    const result = await require('../config/database').query(
+    const result = await pool.query(
       'SELECT * FROM branding_configurations WHERE tenant_id = $1 AND is_active = true',
       [req.user.tenantId]
     );
@@ -87,7 +88,7 @@ router.post('/resellers', authenticateToken, async (req, res) => {
 // Get reseller details
 router.get('/resellers/:id', authenticateToken, async (req, res) => {
   try {
-    const result = await require('../config/database').query(
+    const result = await pool.query(
       'SELECT * FROM resellers WHERE id = $1 AND tenant_id = $2',
       [req.params.id, req.user.tenantId]
     );
@@ -125,7 +126,7 @@ router.get('/resellers', authenticateToken, async (req, res) => {
 
     query += ' ORDER BY created_at DESC';
 
-    const result = await require('../config/database').query(query, params);
+    const result = await pool.query(query, params);
 
     const resellers = result.rows.map(r => ({
       ...r,
@@ -162,7 +163,7 @@ router.patch('/resellers/:id', authenticateToken, async (req, res) => {
       .map((key, idx) => `${key} = $${idx + 2}`)
       .join(', ');
 
-    const result = await require('../config/database').query(
+    const result = await pool.query(
       `UPDATE resellers SET ${setClause}, updated_at = NOW() 
        WHERE id = $1 AND tenant_id = $${Object.keys(updates).length + 2}
        RETURNING *`,
@@ -237,7 +238,7 @@ router.get('/resellers/:id/commissions', authenticateToken, async (req, res) => 
 
     query += ' ORDER BY created_at DESC';
 
-    const result = await require('../config/database').query(query, params);
+    const result = await pool.query(query, params);
 
     res.json(result.rows);
   } catch (error) {
@@ -269,7 +270,7 @@ router.post('/resellers/:id/payouts', authenticateToken, async (req, res) => {
 // Get reseller payouts
 router.get('/resellers/:id/payouts', authenticateToken, async (req, res) => {
   try {
-    const result = await require('../config/database').query(
+    const result = await pool.query(
       'SELECT * FROM reseller_payouts WHERE reseller_id = $1 ORDER BY created_at DESC',
       [req.params.id]
     );

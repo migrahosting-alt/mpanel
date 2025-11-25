@@ -8,115 +8,82 @@ import logger from '../config/logger.js';
  */
 export const getDashboardStats = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const isAdmin = req.user.role === 'admin';
+    const tenantId = req.user.tenantId || req.user.tenant_id;
+    const isAdmin = req.user.role === 'admin' || req.user.role === 'super_admin';
 
-    // Get service counts
-    const servicesQuery = isAdmin
-      ? `SELECT 
-          COUNT(*) FILTER (WHERE type = 'domain') as domains,
-          COUNT(*) FILTER (WHERE type = 'hosting') as hosting,
-          COUNT(*) FILTER (WHERE type = 'database') as databases,
-          COUNT(*) FILTER (WHERE type = 'email') as email_accounts
-         FROM services`
-      : `SELECT 
-          COUNT(*) FILTER (WHERE type = 'domain') as domains,
-          COUNT(*) FILTER (WHERE type = 'hosting') as hosting,
-          COUNT(*) FILTER (WHERE type = 'database') as databases,
-          COUNT(*) FILTER (WHERE type = 'email') as email_accounts
-         FROM services WHERE user_id = $1`;
-
-    const servicesParams = isAdmin ? [] : [userId];
-    const servicesResult = await pool.query(servicesQuery, servicesParams);
-    const services = servicesResult.rows[0] || {
+    // Get basic counts
+    const stats = {
       domains: 0,
-      hosting: 0,
+      websites: 0,
       databases: 0,
-      email_accounts: 0
+      mailboxes: 0,
+      customers: 0,
+      servers: 0
     };
 
-    // Get subscription info
-    const subscriptionQuery = isAdmin
-      ? `SELECT COUNT(*) as total, 
-          COUNT(*) FILTER (WHERE status = 'active') as active,
-          COUNT(*) FILTER (WHERE status = 'canceled') as canceled
-         FROM subscriptions`
-      : `SELECT COUNT(*) as total,
-          COUNT(*) FILTER (WHERE status = 'active') as active,
-          COUNT(*) FILTER (WHERE status = 'canceled') as canceled
-         FROM subscriptions WHERE user_id = $1`;
+    try {
+      const domainsResult = await pool.query(
+        'SELECT COUNT(*) as count FROM domains WHERE tenant_id = $1',
+        [tenantId]
+      );
+      stats.domains = parseInt(domainsResult.rows[0]?.count) || 0;
+    } catch (err) {
+      logger.error('Error counting domains:', err);
+    }
 
-    const subscriptionParams = isAdmin ? [] : [userId];
-    const subscriptionResult = await pool.query(subscriptionQuery, subscriptionParams);
-    const subscriptions = subscriptionResult.rows[0] || { total: 0, active: 0, canceled: 0 };
+    try {
+      const websitesResult = await pool.query(
+        'SELECT COUNT(*) as count FROM websites WHERE tenant_id = $1',
+        [tenantId]
+      );
+      stats.websites = parseInt(websitesResult.rows[0]?.count) || 0;
+    } catch (err) {
+      logger.error('Error counting websites:', err);
+    }
 
-    // Get billing summary
-    const billingQuery = isAdmin
-      ? `SELECT 
-          COUNT(*) as total_invoices,
-          COUNT(*) FILTER (WHERE status = 'paid') as paid_invoices,
-          COUNT(*) FILTER (WHERE status = 'unpaid') as unpaid_invoices,
-          COALESCE(SUM(total) FILTER (WHERE status = 'unpaid'), 0) as amount_due,
-          COALESCE(SUM(total) FILTER (WHERE status = 'paid' AND paid_at >= NOW() - INTERVAL '30 days'), 0) as paid_last_30_days
-         FROM invoices`
-      : `SELECT 
-          COUNT(*) as total_invoices,
-          COUNT(*) FILTER (WHERE status = 'paid') as paid_invoices,
-          COUNT(*) FILTER (WHERE status = 'unpaid') as unpaid_invoices,
-          COALESCE(SUM(total) FILTER (WHERE status = 'unpaid'), 0) as amount_due,
-          COALESCE(SUM(total) FILTER (WHERE status = 'paid' AND paid_at >= NOW() - INTERVAL '30 days'), 0) as paid_last_30_days
-         FROM invoices WHERE user_id = $1`;
+    try {
+      const databasesResult = await pool.query(
+        'SELECT COUNT(*) as count FROM databases WHERE tenant_id = $1',
+        [tenantId]
+      );
+      stats.databases = parseInt(databasesResult.rows[0]?.count) || 0;
+    } catch (err) {
+      logger.error('Error counting databases:', err);
+    }
 
-    const billingParams = isAdmin ? [] : [userId];
-    const billingResult = await pool.query(billingQuery, billingParams);
-    const billing = billingResult.rows[0] || {
-      total_invoices: 0,
-      paid_invoices: 0,
-      unpaid_invoices: 0,
-      amount_due: 0,
-      paid_last_30_days: 0
-    };
+    try {
+      const mailboxesResult = await pool.query(
+        'SELECT COUNT(*) as count FROM mailboxes WHERE tenant_id = $1',
+        [tenantId]
+      );
+      stats.mailboxes = parseInt(mailboxesResult.rows[0]?.count) || 0;
+    } catch (err) {
+      logger.error('Error counting mailboxes:', err);
+    }
 
-    // Get recent activity (last 10 items)
-    const activityQuery = isAdmin
-      ? `SELECT type, description, created_at, user_id 
-         FROM activity_logs 
-         ORDER BY created_at DESC 
-         LIMIT 10`
-      : `SELECT type, description, created_at 
-         FROM activity_logs 
-         WHERE user_id = $1 
-         ORDER BY created_at DESC 
-         LIMIT 10`;
+    try {
+      const customersResult = await pool.query(
+        'SELECT COUNT(*) as count FROM customers WHERE tenant_id = $1',
+        [tenantId]
+      );
+      stats.customers = parseInt(customersResult.rows[0]?.count) || 0;
+    } catch (err) {
+      logger.error('Error counting customers:', err);
+    }
 
-    const activityParams = isAdmin ? [] : [userId];
-    const activityResult = await pool.query(activityQuery, activityParams);
-    const recentActivity = activityResult.rows || [];
+    try {
+      const serversResult = await pool.query(
+        'SELECT COUNT(*) as count FROM servers WHERE tenant_id = $1',
+        [tenantId]
+      );
+      stats.servers = parseInt(serversResult.rows[0]?.count) || 0;
+    } catch (err) {
+      logger.error('Error counting servers:', err);
+    }
 
     res.json({
-      services: {
-        domains: parseInt(services.domains) || 0,
-        hosting: parseInt(services.hosting) || 0,
-        databases: parseInt(services.databases) || 0,
-        email_accounts: parseInt(services.email_accounts) || 0,
-        total: (parseInt(services.domains) || 0) + 
-               (parseInt(services.hosting) || 0) + 
-               (parseInt(services.databases) || 0) + 
-               (parseInt(services.email_accounts) || 0)
-      },
-      subscriptions: {
-        total: parseInt(subscriptions.total) || 0,
-        active: parseInt(subscriptions.active) || 0,
-        canceled: parseInt(subscriptions.canceled) || 0
-      },
-      billing: {
-        totalInvoices: parseInt(billing.total_invoices) || 0,
-        paidInvoices: parseInt(billing.paid_invoices) || 0,
-        unpaidInvoices: parseInt(billing.unpaid_invoices) || 0,
-        amountDue: parseFloat(billing.amount_due) || 0,
-        paidLast30Days: parseFloat(billing.paid_last_30_days) || 0
-      },
-      recentActivity
+      success: true,
+      data: stats
     });
   } catch (error) {
     logger.error('Failed to fetch dashboard stats:', error);

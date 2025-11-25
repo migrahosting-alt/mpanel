@@ -112,6 +112,8 @@ function App() {
       {/* Admin-only routes */}
       {isAdmin && (
         <>
+          <Route path="/admin" element={<Navigate to="/" replace />} />
+          <Route path="/admin/" element={<Navigate to="/" replace />} />
           <Route path="/admin/users" element={<ProtectedRoute><UsersPage /></ProtectedRoute>} />
           <Route path="/admin/customers" element={<ProtectedRoute><CustomersPage /></ProtectedRoute>} />
           <Route path="/admin/guardian" element={<ProtectedRoute><GuardianManagement /></ProtectedRoute>} />

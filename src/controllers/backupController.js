@@ -35,26 +35,22 @@ const BACKUP_DIR = process.env.BACKUP_DIR || '/var/mpanel/backups';
  */
 export const getBackups = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const isAdmin = req.user.role === 'admin';
+    const tenantId = req.user.tenantId || req.user.tenant_id;
 
     let query = `
       SELECT 
         b.*,
-        u.email as owner_email
+        cu.company_name,
+        u.email as customer_email
       FROM backups b
-      LEFT JOIN users u ON b.user_id = u.id
+      LEFT JOIN customers cu ON b.customer_id = cu.id
+      LEFT JOIN users u ON cu.user_id = u.id
+      WHERE b.tenant_id = $1
     `;
-
-    const params = [];
-    if (!isAdmin) {
-      query += ` WHERE b.user_id = $1`;
-      params.push(userId);
-    }
 
     query += ` ORDER BY b.created_at DESC`;
 
-    const result = await pool.query(query, params);
+    const result = await pool.query(query, [tenantId]);
     res.json({ backups: result.rows });
   } catch (error) {
     logger.error('Error fetching backups:', error);

@@ -12,26 +12,27 @@ import logger from '../utils/logger.js';
  */
 export const getZones = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const tenantId = req.user.tenantId || req.user.tenant_id;
     const isAdmin = req.user.role === 'admin';
 
     let query = `
       SELECT 
         z.*,
+        c.company_name,
         u.email as owner_email,
+        d.domain_name,
         COUNT(r.id) as record_count
       FROM dns_zones z
-      LEFT JOIN users u ON z.user_id = u.id
-      LEFT JOIN dns_records r ON z.id = r.zone_id
+        LEFT JOIN customers c ON z.customer_id = c.id
+        LEFT JOIN users u ON c.user_id = u.id
+        LEFT JOIN domains d ON z.domain_id = d.id
+        LEFT JOIN dns_records r ON z.id = r.zone_id
+      WHERE z.tenant_id = $1
     `;
 
-    const params = [];
-    if (!isAdmin) {
-      query += ` WHERE z.user_id = $1`;
-      params.push(userId);
-    }
+    const params = [tenantId];
 
-    query += ` GROUP BY z.id, u.email ORDER BY z.created_at DESC`;
+    query += ` GROUP BY z.id, c.company_name, u.email, d.domain_name ORDER BY z.created_at DESC`;
 
     const result = await pool.query(query, params);
     res.json({ zones: result.rows });
@@ -47,16 +48,22 @@ export const getZones = async (req, res) => {
 export const getZone = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user.id;
-    const isAdmin = req.user.role === 'admin';
+    const tenantId = req.user.tenantId || req.user.tenant_id;
 
-    // Get zone
-    const zoneQuery = isAdmin
-      ? `SELECT * FROM dns_zones WHERE id = $1`
-      : `SELECT * FROM dns_zones WHERE id = $1 AND user_id = $2`;
+    // Get zone with customer/domain info
+    const zoneQuery = `
+      SELECT z.*, 
+             c.company_name,
+             u.email as owner_email,
+             d.domain_name
+      FROM dns_zones z
+      LEFT JOIN customers c ON z.customer_id = c.id
+      LEFT JOIN users u ON c.user_id = u.id
+      LEFT JOIN domains d ON z.domain_id = d.id
+      WHERE z.id = $1 AND z.tenant_id = $2
+    `;
     
-    const zoneParams = isAdmin ? [id] : [id, userId];
-    const zoneResult = await pool.query(zoneQuery, zoneParams);
+    const zoneResult = await pool.query(zoneQuery, [id, tenantId]);
 
     if (zoneResult.rows.length === 0) {
       return res.status(404).json({ error: 'DNS zone not found' });

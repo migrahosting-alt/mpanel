@@ -4,7 +4,6 @@ import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import compression from 'compression';
 import dotenv from 'dotenv';
-import bodyParser from 'body-parser';
 
 import logger from './config/logger.js';
 import { initSentry, sentryErrorHandler } from './config/sentry.js';
@@ -32,8 +31,8 @@ import memoryLeakDetector from './utils/memoryLeakDetector.js';
 import workerPool from './utils/workerPool.js';
 import apm, { apmMiddleware } from './utils/apm.js';
 import routes from './routes/index.js';
+import stripeWebhookRoutes from './routes/stripeWebhookRoutes.js';
 import BillingService from './services/BillingService.js';
-import StripeService from './services/StripeService.js';
 import { cache } from './services/cache.js';
 import { i18n, i18nMiddleware } from './services/i18n.js';
 import queueService from './services/queueService.js';
@@ -57,6 +56,9 @@ await cache.initialize();
 await i18n.initialize();
 
 const app = express();
+
+// Trust proxy - required when behind Nginx/reverse proxy
+app.set('trust proxy', 1);
 
 // Initialize Sentry FIRST (before any other middleware)
 initSentry(app);
@@ -149,18 +151,9 @@ app.use(compression({
   threshold: 1024, // Only compress responses > 1KB
   level: 6 // Compression level (0-9, 6 is balanced)
 }));
-// 6. Stripe webhook (raw body required for signature verification)
-app.post('/webhooks/stripe', bodyParser.raw({ type: 'application/json', limit: '1mb' }), (req, res) => {
-  try {
-    const signature = req.headers['stripe-signature'];
-    const event = StripeService.verifyWebhookSignature(req.body, signature);
-    logger.info(`[webhook] ${event.type}`);
-    res.json({ received: true });
-  } catch (error) {
-    logger.error('Stripe webhook error', error);
-    res.status(400).send('Webhook Error');
-  }
-});
+
+// 6. Stripe webhook (must be before body parsers to preserve raw body)
+app.use('/api/webhooks', stripeWebhookRoutes);
 
 // 7. Body parsing with size limits (prevent DoS)
 app.use(express.json({ 
@@ -312,17 +305,18 @@ app.use((err, req, res, next) => {
   res.status(statusCode).json(errorResponse);
 });
 
-const server = httpServer.listen(PORT, '127.0.0.1', () => {
-  logger.info(`MPanel API server running on port ${PORT}`);
+const HOST = process.env.HOST || '0.0.0.0';
+const server = httpServer.listen(PORT, HOST, () => {
+  logger.info(`MPanel API server running on ${HOST}:${PORT}`);
   logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
   logger.info(`API Version: ${process.env.API_VERSION || 'v1'}`);
-  logger.info(`WebSocket path: ws://127.0.0.1:${PORT}/ws`);
-  logger.info(`GraphQL endpoint: http://127.0.0.1:${PORT}/graphql`);
-  logger.info(`Prometheus metrics: http://127.0.0.1:${PORT}/metrics`);
-  console.log(`✓ Server listening on http://127.0.0.1:${PORT}`);
-  console.log(`✓ WebSocket ready at ws://127.0.0.1:${PORT}/ws`);
-  console.log(`✓ GraphQL API at http://127.0.0.1:${PORT}/graphql`);
-  console.log(`✓ Prometheus metrics at http://127.0.0.1:${PORT}/metrics`);
+  logger.info(`WebSocket path: ws://${HOST}:${PORT}/ws`);
+  logger.info(`GraphQL endpoint: http://${HOST}:${PORT}/graphql`);
+  logger.info(`Prometheus metrics: http://${HOST}:${PORT}/metrics`);
+  console.log(`✓ Server listening on http://${HOST}:${PORT}`);
+  console.log(`✓ WebSocket ready at ws://${HOST}:${PORT}/ws`);
+  console.log(`✓ GraphQL API at http://${HOST}:${PORT}/graphql`);
+  console.log(`✓ Prometheus metrics at http://${HOST}:${PORT}/metrics`);
   console.log(`✓ Health checks: /api/health, /api/ready, /api/live`);
   
   // Start database health monitoring (every 30 seconds)

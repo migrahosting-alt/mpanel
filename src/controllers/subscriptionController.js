@@ -1,9 +1,7 @@
 import Subscription from '../models/Subscription.js';
 import logger from '../config/logger.js';
 import pool from '../db/index.js';
-import Stripe from 'stripe';
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_dummy');
+import { stripe } from '../config/stripeConfig.js';
 
 export const createSubscription = async (req, res) => {
   try {
@@ -102,6 +100,10 @@ export const getPlans = async (req, res) => {
  */
 export const createStripeSubscription = async (req, res) => {
   try {
+    if (!stripe) {
+      return res.status(500).json({ error: 'Stripe not configured' });
+    }
+
     const { planId, paymentMethodId } = req.body;
     const userId = req.user.id;
 
@@ -194,6 +196,10 @@ export const createStripeSubscription = async (req, res) => {
  */
 export const changePlan = async (req, res) => {
   try {
+    if (!stripe) {
+      return res.status(500).json({ error: 'Stripe not configured' });
+    }
+
     const { id } = req.params;
     const { newPlanId } = req.body;
     const userId = req.user.id;

@@ -1,13 +1,6 @@
-import Stripe from 'stripe';
-import dotenv from 'dotenv';
 import logger from '../config/logger.js';
+import { stripe, STRIPE_WEBHOOK_SECRET, STRIPE_CHECKOUT_CONFIG } from '../config/stripeConfig.js';
 import { stripeCircuitBreaker } from '../utils/circuitBreaker.js';
-
-dotenv.config();
-
-const stripe = process.env.STRIPE_SECRET_KEY 
-  ? new Stripe(process.env.STRIPE_SECRET_KEY)
-  : null;
 
 class StripeService {
   /**
@@ -97,7 +90,7 @@ class StripeService {
       throw new Error('Stripe is not configured');
     }
 
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    const webhookSecret = STRIPE_WEBHOOK_SECRET;
     if (!webhookSecret) {
       throw new Error('Webhook secret not configured');
     }
@@ -143,8 +136,8 @@ class StripeService {
         mode,
         line_items: lineItems,
         customer_email: customerEmail,
-        success_url: successUrl,
-        cancel_url: cancelUrl,
+        success_url: successUrl || STRIPE_CHECKOUT_CONFIG.successUrl,
+        cancel_url: cancelUrl || STRIPE_CHECKOUT_CONFIG.cancelUrl,
         metadata,
       });
       logger.info(`Stripe checkout session created: ${session.id}`);
