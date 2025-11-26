@@ -6,6 +6,10 @@ import {
   getCheckoutSession,
   handleCheckoutSuccess,
 } from '../controllers/checkoutController.js';
+import {
+  createPaymentIntent,
+  getPaymentIntent,
+} from '../controllers/stripePaymentController.js';
 
 const router = express.Router();
 
@@ -13,6 +17,10 @@ const router = express.Router();
 router.post('/create-session', createCheckoutSession);
 router.get('/session/:sessionId', getCheckoutSession);
 router.post('/success', handleCheckoutSuccess);
+
+// New: Custom payment UI routes
+router.post('/payment-intent', createPaymentIntent);
+router.get('/payment-intent/:id', getPaymentIntent);
 
 export default router;
 
