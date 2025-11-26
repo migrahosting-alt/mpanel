@@ -58,7 +58,9 @@ export async function createPaymentIntent(req, res) {
       amount: amountInCents,
       currency: 'usd',
       customer: customerId,
-      automatic_payment_methods: { enabled: true },
+      automatic_payment_methods: { 
+        enabled: true, // Enable multiple payment methods (cards, Link, wallets, etc.)
+      },
       metadata: {
         cartId: cartId || '',
         source: 'migrahosting-marketing',
