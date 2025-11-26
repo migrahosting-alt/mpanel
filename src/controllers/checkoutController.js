@@ -64,14 +64,30 @@ export async function createCheckoutSession(req, res) {
     const primary = priceRows[0];
 
     // Build line items array from cart items
+    // IMPORTANT: Stripe Checkout subscription mode requires ALL line items to have the SAME billing interval
+    // We'll use the primary plan's interval for all items
     let lineItems = [];
+    
+    // Determine primary billing interval from the main hosting plan
+    const primaryInterval = billingCycle === 'monthly' ? 'month' : 'year';
+    const primaryIntervalCount = 
+      billingCycle === 'monthly' ? 1 :
+      billingCycle === 'yearly' ? 1 :
+      billingCycle === 'biennial' ? 2 :
+      billingCycle === 'triennial' ? 3 : 1;
 
     // Process ALL cart items from frontend for complete cart visibility in Stripe
     if (cartItems && Array.isArray(cartItems) && cartItems.length > 0) {
-      logger.info(`Processing ${cartItems.length} cart items for Stripe line_items`);
+      logger.info(`Processing ${cartItems.length} cart items for Stripe with interval: ${primaryInterval} x${primaryIntervalCount}`);
       
       for (const item of cartItems) {
-        // Handle different cart item types
+        // Skip items with $0 price (Stripe doesn't allow them)
+        if (item.price === 0) {
+          logger.info(`Skipping $0 item: ${item.name || item.id}`);
+          continue;
+        }
+        
+        // Handle different cart item types - all forced to primary billing interval
         switch (item.type) {
           case 'hosting': {
             // Hosting plan with billing cycle
@@ -94,21 +110,18 @@ export async function createCheckoutSession(req, res) {
                 quantity: item.quantity || 1,
               });
             } else {
-              // Create dynamic price for hosting
-              const intervalMap = { monthly: 'month', annually: 'year', biennially: 'year', triennially: 'year' };
-              const countMap = { monthly: 1, annually: 1, biennially: 2, triennially: 3 };
-              
+              // Create dynamic price - use primary interval
               lineItems.push({
                 price_data: {
                   currency: item.currency || 'usd',
                   product_data: {
-                    name: item.name || `${plan} Hosting - ${term}`,
-                    description: item.description || `${plan} hosting plan (${term})`,
+                    name: item.name || `${plan} Hosting`,
+                    description: item.description || `Billed ${billingCycle}`,
                   },
                   unit_amount: item.price || (hostingPriceRows[0]?.unit_amount || 0),
                   recurring: {
-                    interval: intervalMap[term] || 'month',
-                    interval_count: countMap[term] || 1,
+                    interval: primaryInterval,
+                    interval_count: primaryIntervalCount,
                   },
                 },
                 quantity: item.quantity || 1,
@@ -118,18 +131,28 @@ export async function createCheckoutSession(req, res) {
           }
           
           case 'domain': {
-            // Domain registration/transfer/renewal
+            // Domain - prorate to match primary interval
+            const domainYearlyPrice = item.price || 1299; // $12.99/year
+            let proratedPrice = domainYearlyPrice;
+            
+            // Convert yearly domain price to match primary interval
+            if (primaryInterval === 'month') {
+              proratedPrice = Math.round(domainYearlyPrice / 12); // Monthly equivalent
+            } else if (primaryIntervalCount > 1) {
+              proratedPrice = domainYearlyPrice * primaryIntervalCount; // Multi-year
+            }
+            
             lineItems.push({
               price_data: {
                 currency: item.currency || 'usd',
                 product_data: {
                   name: item.name || `Domain: ${item.domain || 'domain'}`,
-                  description: item.description || `Domain ${item.action || 'registration'} - ${item.tld || ''}`,
+                  description: `Domain registration/transfer (billed ${billingCycle})`,
                 },
-                unit_amount: item.price || 1299, // Default $12.99
+                unit_amount: proratedPrice,
                 recurring: {
-                  interval: 'year',
-                  interval_count: item.years || 1,
+                  interval: primaryInterval,
+                  interval_count: primaryIntervalCount,
                 },
               },
               quantity: 1,
@@ -137,77 +160,56 @@ export async function createCheckoutSession(req, res) {
             break;
           }
           
-          case 'email': {
-            // Email service (MigraMail)
+          case 'email':
+          case 'simple':
+          default: {
+            // Email and other services - adapt to primary interval
+            const itemName = item.name || item.id || 'Additional Service';
+            let itemPrice = item.price || 0;
+            
+            if (itemPrice === 0) {
+              logger.info(`Skipping $0 item: ${itemName}`);
+              break;
+            }
+            
+            // If item has its own interval different from primary, prorate it
+            const itemInterval = item.interval || 'month';
+            if (itemInterval !== primaryInterval) {
+              if (itemInterval === 'month' && primaryInterval === 'year') {
+                // Monthly price → yearly: multiply by 12
+                itemPrice = itemPrice * 12;
+              } else if (itemInterval === 'year' && primaryInterval === 'month') {
+                // Yearly price → monthly: divide by 12
+                itemPrice = Math.round(itemPrice / 12);
+              }
+              // For multi-year intervals, multiply by interval count
+              if (primaryIntervalCount > 1) {
+                itemPrice = itemPrice * primaryIntervalCount;
+              }
+            }
+            
             lineItems.push({
               price_data: {
                 currency: item.currency || 'usd',
                 product_data: {
-                  name: item.name || 'Professional Email',
-                  description: item.description || 'MigraMail email service',
+                  name: itemName,
+                  description: item.description || `Billed ${billingCycle}`,
                 },
-                unit_amount: item.price || 299, // Default $2.99
+                unit_amount: itemPrice,
                 recurring: {
-                  interval: item.interval || 'month',
+                  interval: primaryInterval,
+                  interval_count: primaryIntervalCount,
                 },
               },
               quantity: item.quantity || 1,
             });
             break;
           }
-          
-          case 'addon': {
-            // Addon/upsell items
-            if (item.stripePriceId) {
-              lineItems.push({
-                price: item.stripePriceId,
-                quantity: item.quantity || 1,
-              });
-            } else {
-              lineItems.push({
-                price_data: {
-                  currency: item.currency || 'usd',
-                  product_data: {
-                    name: item.name || 'Add-on',
-                    description: item.description || '',
-                  },
-                  unit_amount: item.price || 0,
-                  recurring: {
-                    interval: item.interval === 'year' ? 'year' : 'month',
-                  },
-                },
-                quantity: item.quantity || 1,
-              });
-            }
-            break;
-          }
-          
-          case 'simple':
-          default: {
-            // Simple items (WordPress, VPS, other products with priceId)
-            if (item.priceId || item.stripePriceId) {
-              // Try to resolve from database first
-              const simplePriceQuery = `
-                SELECT pr.stripe_price_id, pr.unit_amount, pr.currency, p.name
-                FROM products p
-                JOIN prices pr ON pr.product_id = p.id
-                WHERE p.code = $1 AND pr.is_active = TRUE
-                LIMIT 1;
-              `;
-              const { rows: simplePriceRows } = await db.query(simplePriceQuery, [item.priceId || item.id]);
-              
-              if (simplePriceRows.length && simplePriceRows[0].stripe_price_id) {
-                lineItems.push({
-                  price: simplePriceRows[0].stripe_price_id,
-                  quantity: item.quantity || 1,
-                });
-              } else {
-                // Fallback to dynamic price
-                lineItems.push({
-                  price_data: {
-                    currency: item.currency || 'usd',
-                    product_data: {
-                      name: item.name || simplePriceRows[0]?.name || item.id,
+        }
+      }
+      
+      logger.info(`Built ${lineItems.length} Stripe line items (all using ${primaryInterval} x${primaryIntervalCount})`);
+    }
                       description: item.description || '',
                     },
                     unit_amount: item.price || simplePriceRows[0]?.unit_amount || 0,
