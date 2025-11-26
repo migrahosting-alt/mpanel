@@ -210,24 +210,6 @@ export async function createCheckoutSession(req, res) {
       
       logger.info(`Built ${lineItems.length} Stripe line items (all using ${primaryInterval} x${primaryIntervalCount})`);
     }
-                      description: item.description || '',
-                    },
-                    unit_amount: item.price || simplePriceRows[0]?.unit_amount || 0,
-                    recurring: item.recurring ? {
-                      interval: item.interval === 'year' ? 'year' : 'month',
-                    } : undefined,
-                  },
-                  quantity: item.quantity || 1,
-                });
-              }
-            }
-            break;
-          }
-        }
-      }
-      
-      logger.info(`Built ${lineItems.length} Stripe line items from cart`);
-    }
     
     // Fallback: If no cart items processed, use legacy primary plan method
     if (lineItems.length === 0) {
