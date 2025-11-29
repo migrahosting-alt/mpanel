@@ -5,11 +5,15 @@
   "main": "src/server.js",
   "type": "module",
   "scripts": {
-    "dev": "node --watch src/server.js",
-    "build": "npm run build:mpanel",
+    "dev": "tsx watch src/server-ts.ts",
+    "dev:legacy": "node --watch src/server.js",
+    "build": "tsc && npm run build:mpanel",
+    "build:backend": "tsc",
     "build:mpanel": "npm --prefix frontend run build",
     "server:dev": "npm run dev",
-    "start": "node src/server.js",
+    "start": "node dist/server-ts.js",
+    "start:ts": "tsx src/server-ts.ts",
+    "start:legacy": "node src/server.js",
     "server:start": "npm run start --",
     "migrate": "node src/db/migrate.js",
     "server:migrate": "npm run migrate",
@@ -45,6 +49,9 @@
     "@aws-sdk/client-s3": "^3.712.0",
     "@google-cloud/storage": "^7.17.3",
     "@kubernetes/client-node": "^1.4.0",
+    "@prisma/adapter-pg": "^7.0.1",
+    "@prisma/client": "^7.0.1",
+    "@prisma/extension-accelerate": "^3.0.0",
     "@sentry/node": "^10.25.0",
     "@sentry/profiling-node": "^10.25.0",
     "@socket.io/redis-adapter": "^8.3.0",
@@ -93,10 +100,18 @@
     "twilio": "^5.10.5",
     "uuid": "^11.1.0",
     "winston": "^3.17.0",
-    "xml2js": "^0.6.2"
+    "xml2js": "^0.6.2",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
-    "eslint": "^9.17.0"
+    "@types/bcrypt": "^6.0.0",
+    "@types/express": "^5.0.5",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^24.10.1",
+    "eslint": "^9.17.0",
+    "prisma": "^7.0.1",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
   },
   "engines": {
     "node": ">=20.0.0"
