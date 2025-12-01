@@ -1,3 +1,10 @@
+/**
+ * NOTE FOR COPILOT:
+ * This project follows the architecture defined in docs/mpanel-modules-spec.md.
+ * When implementing TODOs or new endpoints, follow those module responsibilities,
+ * names, and flows (Users, Tenants, Subscriptions, CloudPods, Provisioning, etc.).
+ */
+
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -32,6 +39,13 @@ import workerPool from './utils/workerPool.js';
 import apm, { apmMiddleware } from './utils/apm.js';
 import routes from './routes/index.js';
 import stripeWebhookRoutes from './routes/stripeWebhookRoutes.js';
+import provisioningStripeRouter from './routes/provisioningStripe.js';
+import ordersPublicRouter from './routes/ordersPublic.js';
+import adminCustomersRouter from './routes/adminCustomers.js';
+import adminSubscriptionsRouter from './routes/adminSubscriptions.js';
+import adminServersRouter from './routes/adminServers.js';
+import workerRouter from './routes/workerRoutes.js';
+import cloudPodsRouter from './routes/cloudPods.js';
 import BillingService from './services/BillingService.js';
 import { cache } from './services/cache.js';
 import { i18n, i18nMiddleware } from './services/i18n.js';
@@ -196,6 +210,23 @@ app.get('/metrics', metricsHandler);
 app.get('/api/health', healthCheckHandler);
 app.get('/api/ready', readinessHandler);
 app.get('/api/live', livenessHandler);
+
+// Provisioning routes (Stripe → mPanel integration)
+app.use('/api/provisioning', provisioningStripeRouter);
+
+// Public orders endpoint (marketing site → mPanel)
+app.use('/api/public/orders', ordersPublicRouter);
+
+// Admin API routes
+app.use('/api/admin/customers', adminCustomersRouter);
+app.use('/api/admin/subscriptions', adminSubscriptionsRouter);
+app.use('/api/admin/servers', adminServersRouter);
+
+// Worker API routes (for provisioning workers on srv1)
+app.use('/api/worker', workerRouter);
+
+// CloudPods internal API routes
+app.use('/api/internal/cloudpods', cloudPodsRouter);
 
 // API routes
 app.use('/api', routes);
