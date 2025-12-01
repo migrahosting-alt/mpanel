@@ -566,3 +566,269 @@ requirePermission(user, 'domains:delete', tenantId);
 - `databases`, `dbUsers`
 - `backupJobs`, `backupSnapshots`
 - `auditEvents`, `jobs`
+
+---
+
+## 14. Copilot Implementation Rules
+
+> **CRITICAL:** Use these rules any time you create / modify code in this repo.
+
+### 14.1 Multi-Tenant Safety
+
+Every API that touches tenant data **must**:
+
+1. **Accept `tenantId` explicitly** (route param, query, or from auth context).
+
+2. **Verify access with the RBAC helper:**
+   ```javascript
+   requirePermission(user, '<module>:<action>', tenantId)
+   ```
+
+3. **Filter queries by `tenantId`** (never return cross-tenant rows).
+
+**NEVER:**
+- Trust client-supplied `tenantId` without verifying it belongs to the current user.
+- Use "global" queries that aren't filtered by tenant in tenant-facing endpoints.
+
+### 14.2 Environment & Secrets
+
+**Never hard-code:**
+- IPs, hostnames, ports, or credentials.
+
+**Always read from config / env:**
+- `APP_URL`, `API_URL`, `MAIL_HOST`, `REDIS_URL`, DB URLs, etc.
+
+**Infrastructure communication:**
+- All code that talks to infrastructure must go over Tailscale SSH or internal network.
+- Use hostnames like `srv1-web`, `mail-core`, `db-core`, `dns-core` (not raw IPs).
+
+### 14.3 Jobs & Idempotency
+
+For anything that changes infrastructure (CloudPods, DNS, SSL, email, backups):
+
+1. **Always run via a Job** (queue worker), not in the HTTP request:
+   - E.g. `CREATE_CLOUDPOD`, `PROVISION_EMAIL_DOMAIN`, `ISSUE_SSL`.
+
+2. **Jobs must be idempotent:**
+   - Safe to retry if a worker crashes.
+   - Check if resource already exists (domain, pod, mailbox), then update instead of duplicating.
+
+3. **Every job must:**
+   - Log start/end + status.
+   - Emit at least one audit event (see Security Module).
+   - Update related models (`cloudPods`, `domains`, `subscriptions`, etc.).
+
+### 14.4 Logging, Errors, and Audit
+
+**For every API handler:**
+- Return structured errors: `{ error: string, code?: string, details?: any }`.
+- Never leak secrets or full stack traces in responses.
+
+**For sensitive actions:**
+- Always emit an audit event:
+  - `USER_*`, `TENANT_*`, `SUBSCRIPTION_*`, `DOMAIN_*`, `CLOUDPOD_*`, `BACKUP_*`, `SECURITY_*`.
+- Internal logs can include more detail, but still no raw secrets.
+
+### 14.5 HTTP & API Design
+
+Use clear, module-based namespaces:
+
+```
+GET  /api/admin/customers/:tenantId/summary
+POST /api/admin/hosting/cloudpods
+POST /api/admin/hosting/domains/:domainId/dns/apply-template
+POST /api/admin/billing/subscriptions/:id/upgrade
+```
+
+**HTTP method rules:**
+- `GET` for read
+- `POST` for actions/create
+- `PUT`/`PATCH` for updates
+- `DELETE` for delete
+
+**Response shape rules:**
+- Wrap lists as `{ items: [...], total: number }`.
+- For dashboard tiles, create dedicated endpoints that return only what's needed.
+
+### 14.6 Frontend Patterns (React / UI)
+
+Use a consistent pattern:
+```
+/src/modules/<module>/api.ts        – functions calling backend endpoints
+/src/modules/<module>/hooks.ts      – React hooks (useCustomers, useCloudPods)
+/src/modules/<module>/components/*  – UI components
+```
+
+**For data fetching:**
+- Prefer a single client (e.g. `apiClient.ts`) with auth headers & error handling.
+- Surface backend validation errors nicely in forms.
+
+**For dashboards:**
+- Don't call 20 endpoints from one component; create a backend summary endpoint where needed.
+
+### 14.7 Testing & Safety Checks
+
+**For new APIs, add tests covering:**
+- Permission denied (no role).
+- Happy path (correct role & tenant).
+- Incorrect tenant (should be blocked).
+
+**For anything provisioning:**
+- Use "dry-run" or "validate" code paths where possible before calling real infrastructure.
+
+### 14.8 Feature Flags & Future Modules
+
+Where you see modules marked "future" (Kubernetes, CDN, Marketplace, etc.):
+- Implement behind a simple feature flag: `features.kafka`, `features.k8s`, `features.cdn`.
+- UI components should hide these if the flag is off.
+
+### 14.9 Anti-Patterns to Avoid
+
+**Copilot must NOT:**
+
+| ❌ Anti-Pattern | ✅ Correct Approach |
+|----------------|---------------------|
+| Couple Marketing site code directly to internal infra | Only via public API |
+| Talk directly to Docker, PowerDNS, mail, DB from frontend | Backend API → Job → Infrastructure |
+| Skip RBAC on any admin/tenant endpoint | Always `requirePermission()` |
+| Do cross-tenant queries without explicit admin permission | Filter by `tenantId` always |
+| Hard-code IPs, ports, credentials | Use environment variables |
+| Run infra changes in HTTP request handler | Use Job queue |
+| Return raw stack traces to client | Structured error responses |
+| Trust client-supplied `tenantId` blindly | Verify against user's accessible tenants |
+
+---
+
+## 15. Quick Reference: Code Examples
+
+### RBAC Check in Route Handler
+
+```javascript
+import { requirePermission } from '../middleware/rbac.js';
+
+router.get('/api/admin/customers/:tenantId/cloudpods', async (req, res) => {
+  const { tenantId } = req.params;
+  const user = req.user;
+  
+  // Always verify permission first
+  requirePermission(user, 'cloudpods:read', tenantId);
+  
+  // Query filtered by tenantId
+  const pods = await db('cloud_pods')
+    .where({ tenant_id: tenantId, deleted_at: null })
+    .select('*');
+  
+  res.json({ items: pods, total: pods.length });
+});
+```
+
+### Enqueueing a Provisioning Job
+
+```javascript
+import { enqueueJob } from '../services/queueService.js';
+import { emitAuditEvent } from '../services/auditService.js';
+
+async function createCloudPod(tenantId, subscriptionId, planCode, user) {
+  // Create the CloudPod record first
+  const cloudPod = await db('cloud_pods').insert({
+    tenant_id: tenantId,
+    subscription_id: subscriptionId,
+    plan_code: planCode,
+    status: 'pending',
+    created_at: new Date()
+  }).returning('*');
+  
+  // Enqueue the provisioning job
+  await enqueueJob('CREATE_CLOUDPOD', {
+    cloudPodId: cloudPod.id,
+    tenantId,
+    subscriptionId,
+    planCode,
+    requestedBy: user.id
+  });
+  
+  // Emit audit event
+  await emitAuditEvent('CLOUDPOD_CREATE_REQUESTED', {
+    tenantId,
+    cloudPodId: cloudPod.id,
+    userId: user.id
+  });
+  
+  return cloudPod;
+}
+```
+
+### Idempotent Job Handler
+
+```javascript
+async function handleCreateCloudPod(job) {
+  const { cloudPodId, tenantId, planCode } = job.payload;
+  
+  // Check if already provisioned (idempotency)
+  const existing = await db('cloud_pods').where({ id: cloudPodId }).first();
+  if (existing?.status === 'active') {
+    logger.info(`CloudPod ${cloudPodId} already active, skipping`);
+    return { success: true, skipped: true };
+  }
+  
+  try {
+    // Update status to provisioning
+    await db('cloud_pods').where({ id: cloudPodId }).update({ status: 'provisioning' });
+    
+    // Execute provisioning via Tailscale SSH
+    const result = await sshExec(config.PROXMOX_HOST, [
+      'sudo', '/usr/local/sbin/cloudpod-create.sh',
+      '--vmid', cloudPodId,
+      '--tenant', tenantId,
+      '--auto-ip'
+    ]);
+    
+    // Update to active
+    await db('cloud_pods').where({ id: cloudPodId }).update({
+      status: 'active',
+      ip_address: result.ip,
+      vmid: result.vmid
+    });
+    
+    // Emit success audit event
+    await emitAuditEvent('CLOUDPOD_PROVISIONED', { cloudPodId, tenantId });
+    
+    return { success: true };
+  } catch (error) {
+    await db('cloud_pods').where({ id: cloudPodId }).update({
+      status: 'error',
+      error_message: error.message
+    });
+    
+    await emitAuditEvent('CLOUDPOD_PROVISION_FAILED', {
+      cloudPodId,
+      tenantId,
+      error: error.message
+    });
+    
+    throw error; // Allow retry
+  }
+}
+```
+
+### Structured Error Response
+
+```javascript
+// Error handler middleware
+function errorHandler(err, req, res, next) {
+  // Log full error internally
+  logger.error('Request error', {
+    error: err.message,
+    stack: err.stack,
+    path: req.path,
+    userId: req.user?.id
+  });
+  
+  // Return structured response (no stack trace)
+  res.status(err.status || 500).json({
+    error: err.message || 'Internal server error',
+    code: err.code || 'INTERNAL_ERROR',
+    details: err.details || undefined
+  });
+}
+```
