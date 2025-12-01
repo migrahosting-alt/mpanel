@@ -72,3 +72,4 @@ minio_data/
 mpanel-main/
 heap-dumps/
 mpanel-source/
+.env.prisma

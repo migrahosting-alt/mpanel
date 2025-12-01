@@ -33,6 +33,7 @@
     "ci:test": "npm run test:coverage",
     "ci:lint": "npm run lint && npm run format:check",
     "deploy:mpanel-core": "bash ~/deploy_migrapanel_ui_to_mpanel_core.sh",
+    "seed:products": "tsx prisma/seedProductsFromConfig.ts",
     "postinstall": "npm --prefix frontend install"
   },
   "keywords": [

@@ -18,7 +18,7 @@ import Layout from './components/Layout';
 import ServerMetrics from './pages/ServerMetrics';
 import Security from './pages/Security';
 import PremiumTools from './pages/PremiumTools';
-import Provisioning from './pages/Provisioning';
+import Provisioning from './pages/ProvisioningOverview';
 import ServerManagement from './pages/ServerManagement';
 import RoleManagement from './pages/RoleManagement';
 
@@ -39,11 +39,25 @@ import WhiteLabel from './pages/WhiteLabel';
 
 // Admin pages
 import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminDashboardV2 from './pages/admin/AdminDashboardV2';
 import UserManagement from './pages/admin/UserManagement';
 import { CustomersPage } from './pages/CustomersPage';
 import UsersPage from './pages/UsersPage';
 import { DnsPage } from './pages/DnsPage';
 import GuardianManagement from './pages/GuardianManagement';
+
+// Enterprise Admin Modules
+import UsersManagement from './pages/admin/UsersManagement';
+import CustomersManagement from './pages/admin/CustomersManagement';
+import ServerManagementPage from './pages/admin/ServerManagementPage';
+import ProvisioningModule from './pages/admin/ProvisioningModule';
+import RoleManagementPage from './pages/admin/RoleManagementPage';
+import CloudPodsManagement from './pages/admin/CloudPodsManagement';
+import SystemSettings from './pages/admin/SystemSettings';
+import SystemHealthPage from './pages/admin/SystemHealthPage';
+import JobsManagement from './pages/admin/JobsManagement';
+import AuditLog from './pages/admin/AuditLog';
+import SystemEvents from './pages/admin/SystemEvents';
 
 // Client portal
 import ClientLayout from './components/ClientLayout';
@@ -83,7 +97,7 @@ function ProtectedRoute({ children }) {
 
 function App() {
   const { user, isLoading } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
 
   if (isLoading) {
     return (
@@ -105,7 +119,7 @@ function App() {
       {/* Protected routes with layout */}
       <Route path="/" element={
         <ProtectedRoute>
-          {isAdmin ? <AdminDashboard /> : <Dashboard />}
+          {isAdmin ? <AdminDashboardV2 /> : <Dashboard />}
         </ProtectedRoute>
       } />
       
@@ -114,9 +128,18 @@ function App() {
         <>
           <Route path="/admin" element={<Navigate to="/" replace />} />
           <Route path="/admin/" element={<Navigate to="/" replace />} />
-          <Route path="/admin/users" element={<ProtectedRoute><UsersPage /></ProtectedRoute>} />
-          <Route path="/admin/customers" element={<ProtectedRoute><CustomersPage /></ProtectedRoute>} />
+          <Route path="/admin/users" element={<ProtectedRoute><UsersManagement /></ProtectedRoute>} />
+          <Route path="/admin/customers" element={<ProtectedRoute><CustomersManagement /></ProtectedRoute>} />
+          <Route path="/admin/servers" element={<ProtectedRoute><ServerManagementPage /></ProtectedRoute>} />
+          <Route path="/admin/provisioning" element={<ProtectedRoute><ProvisioningModule /></ProtectedRoute>} />
+          <Route path="/admin/roles" element={<ProtectedRoute><RoleManagementPage /></ProtectedRoute>} />
           <Route path="/admin/guardian" element={<ProtectedRoute><GuardianManagement /></ProtectedRoute>} />
+          <Route path="/admin/cloudpods" element={<ProtectedRoute><CloudPodsManagement /></ProtectedRoute>} />
+          <Route path="/admin/settings" element={<ProtectedRoute><SystemSettings /></ProtectedRoute>} />
+          <Route path="/admin/system-health" element={<ProtectedRoute><SystemHealthPage /></ProtectedRoute>} />
+          <Route path="/admin/jobs" element={<ProtectedRoute><JobsManagement /></ProtectedRoute>} />
+          <Route path="/admin/audit" element={<ProtectedRoute><AuditLog /></ProtectedRoute>} />
+          <Route path="/admin/system-events" element={<ProtectedRoute><SystemEvents /></ProtectedRoute>} />
         </>
       )}
       
@@ -136,7 +159,6 @@ function App() {
       <Route path="/premium-tools" element={<ProtectedRoute><PremiumTools /></ProtectedRoute>} />
       <Route path="/provisioning" element={<ProtectedRoute><Provisioning /></ProtectedRoute>} />
       <Route path="/server-management" element={<ProtectedRoute><ServerManagement /></ProtectedRoute>} />
-      <Route path="/admin/roles" element={<ProtectedRoute><RoleManagement /></ProtectedRoute>} />
       
       {/* Premium Features Routes */}
       <Route path="/ssl-certificates" element={<ProtectedRoute><SSLCertificatesPage /></ProtectedRoute>} />

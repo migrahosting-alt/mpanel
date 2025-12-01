@@ -3,32 +3,44 @@
  * This project follows the architecture defined in docs/mpanel-modules-spec.md.
  * Server Selection Service - Selects optimal servers for CloudPod provisioning.
  * 
- * Selection criteria:
- * - Available resources (memory, disk)
- * - Current load
- * - Region preference
- * - Server health status
+ * SCHEMA ALIGNMENT (from prisma/schema.prisma Server model):
+ * - id, tenantId, name, hostname, role, ipAddress, internalIp
+ * - location, provider, status, isActive
+ * - cpu, ramGb, diskGb
+ * - No allocatedMemoryMb, allocatedDiskGb, currentCloudPods, maxCloudPods
+ * 
+ * For resource tracking, use CloudPod aggregate queries.
  */
 
 import { prisma } from '../../config/database.js';
 import logger from '../../config/logger.js';
 
 // ============================================
-// TYPES
+// TYPES - Schema-aligned
 // ============================================
 
+/**
+ * Server type matching actual Prisma schema.
+ */
 export interface Server {
   id: string;
-  hostname: string;
-  ipv4: string;
-  region: string;
+  tenantId: string;
+  name: string;
+  hostname: string | null;
+  role: string;
+  ipAddress: string;
+  internalIp: string | null;
+  location: string | null;
+  provider: string | null;
   status: string;
-  totalMemoryMb: number;
-  totalDiskGb: number;
-  allocatedMemoryMb: number;
-  allocatedDiskGb: number;
-  currentCloudPods: number;
-  maxCloudPods: number;
+  isActive: boolean;
+  cpu: number | null;
+  ramGb: number | null;
+  diskGb: number | null;
+  // Computed at runtime (not in DB)
+  region?: string;
+  availableRamGb?: number;
+  availableDiskGb?: number;
 }
 
 export interface ServerSelectionCriteria {
@@ -46,9 +58,13 @@ export interface ServerSelectionCriteria {
 const MEMORY_RESERVE_PERCENT = 0.20;
 const DISK_RESERVE_PERCENT = 0.10;
 
-// SSH connection settings
+// SSH connection settings - ALL from environment
 const SSH_USER = process.env.PROXMOX_SSH_USER ?? 'root';
 const SSH_KEY_PATH = process.env.PROXMOX_SSH_KEY ?? '/home/mpanel/.ssh/id_ed25519';
+const TAILNET_DOMAIN = process.env.TAILNET_DOMAIN ?? 'tailnet.ts.net';
+
+// Default limits when server doesn't have specs
+const DEFAULT_MAX_CLOUDPODS_PER_SERVER = 50;
 
 // ============================================
 // CORE FUNCTIONS
@@ -56,6 +72,7 @@ const SSH_KEY_PATH = process.env.PROXMOX_SSH_KEY ?? '/home/mpanel/.ssh/id_ed2551
 
 /**
  * Select the best server for a new CloudPod.
+ * Uses actual Prisma schema fields and runtime CloudPod aggregation.
  * 
  * @returns The selected server, or null if no suitable server is available
  */
@@ -64,42 +81,68 @@ export async function selectServerForCloudPod(
 ): Promise<Server | null> {
   const { requiredMemoryMb, requiredDiskGb, preferredRegion, excludeServerIds = [] } = criteria;
 
-  // Get all active servers
+  // Get all active servers with Proxmox/CloudPod role
   const servers = await prisma.server.findMany({
     where: {
-      status: 'ACTIVE',
+      isActive: true,
+      role: { in: ['proxmox', 'cloudpod', 'web'] }, // Roles that can host CloudPods
       id: { notIn: excludeServerIds },
     },
     orderBy: [
-      { allocatedMemoryMb: 'asc' }, // Prefer servers with more free memory
+      { ramGb: 'desc' }, // Prefer servers with more RAM
     ],
   });
 
   if (servers.length === 0) {
-    logger.warn('No active servers available');
+    logger.warn('No active servers available for CloudPod provisioning');
     return null;
   }
 
-  // Calculate available resources for each server
-  const serversWithAvailability = servers.map(server => {
-    const availableMemory = (server.totalMemoryMb * (1 - MEMORY_RESERVE_PERCENT)) - server.allocatedMemoryMb;
-    const availableDisk = (server.totalDiskGb * (1 - DISK_RESERVE_PERCENT)) - server.allocatedDiskGb;
-    const hasCapacity = server.currentCloudPods < server.maxCloudPods;
+  // Calculate available resources for each server using CloudPod aggregation
+  const serversWithAvailability = await Promise.all(
+    servers.map(async (server) => {
+      // Get current CloudPod usage for this server's tenant (or globally if needed)
+      const usage = await prisma.cloudPod.aggregate({
+        where: {
+          tenantId: server.tenantId,
+          status: { notIn: ['deleted', 'failed'] },
+        },
+        _sum: {
+          memoryMb: true,
+          diskGb: true,
+        },
+        _count: true,
+      });
 
-    return {
-      ...server,
-      availableMemory,
-      availableDisk,
-      hasCapacity,
-      meetsRequirements: 
-        availableMemory >= requiredMemoryMb &&
-        availableDisk >= requiredDiskGb &&
+      const usedMemoryMb = usage._sum?.memoryMb ?? 0;
+      const usedDiskGb = usage._sum?.diskGb ?? 0;
+      const cloudPodCount = usage._count;
+
+      // Convert server specs to MB for comparison
+      const totalMemoryMb = (server.ramGb ?? 0) * 1024;
+      const totalDiskGb = server.diskGb ?? 0;
+
+      const availableMemoryMb = (totalMemoryMb * (1 - MEMORY_RESERVE_PERCENT)) - usedMemoryMb;
+      const availableDiskGb = (totalDiskGb * (1 - DISK_RESERVE_PERCENT)) - usedDiskGb;
+      const hasCapacity = cloudPodCount < DEFAULT_MAX_CLOUDPODS_PER_SERVER;
+
+      return {
+        ...server,
+        region: server.location ?? 'default', // Map location to region
+        availableMemoryMb,
+        availableDiskGb,
+        cloudPodCount,
         hasCapacity,
-    };
-  });
+        meetsRequirements:
+          availableMemoryMb >= requiredMemoryMb &&
+          availableDiskGb >= requiredDiskGb &&
+          hasCapacity,
+      };
+    })
+  );
 
   // Filter to servers that meet requirements
-  const eligibleServers = serversWithAvailability.filter(s => s.meetsRequirements);
+  const eligibleServers = serversWithAvailability.filter((s) => s.meetsRequirements);
 
   if (eligibleServers.length === 0) {
     logger.warn('No servers meet resource requirements', {
@@ -110,18 +153,17 @@ export async function selectServerForCloudPod(
     return null;
   }
 
-  // Prefer servers in the requested region
+  // Prefer servers in the requested region (using location field)
   let selectedServer = preferredRegion
-    ? eligibleServers.find(s => s.region === preferredRegion)
+    ? eligibleServers.find((s) => s.region === preferredRegion || s.location === preferredRegion)
     : null;
 
   // If no server in preferred region, use best-fit algorithm
   if (!selectedServer) {
     // Sort by best fit (least waste of resources)
     eligibleServers.sort((a, b) => {
-      // Prefer server with closest match to required resources (least waste)
-      const wasteA = (a.availableMemory - requiredMemoryMb) + (a.availableDisk - requiredDiskGb) * 100;
-      const wasteB = (b.availableMemory - requiredMemoryMb) + (b.availableDisk - requiredDiskGb) * 100;
+      const wasteA = (a.availableMemoryMb - requiredMemoryMb) + (a.availableDiskGb - requiredDiskGb) * 100;
+      const wasteB = (b.availableMemoryMb - requiredMemoryMb) + (b.availableDiskGb - requiredDiskGb) * 100;
       return wasteA - wasteB;
     });
 
@@ -132,9 +174,9 @@ export async function selectServerForCloudPod(
     serverId: selectedServer.id,
     hostname: selectedServer.hostname,
     region: selectedServer.region,
-    availableMemory: selectedServer.availableMemory,
-    availableDisk: selectedServer.availableDisk,
-    currentCloudPods: selectedServer.currentCloudPods,
+    availableMemoryMb: selectedServer.availableMemoryMb,
+    availableDiskGb: selectedServer.availableDiskGb,
+    cloudPodCount: selectedServer.cloudPodCount,
   });
 
   return selectedServer as Server;
@@ -142,41 +184,15 @@ export async function selectServerForCloudPod(
 
 /**
  * Get SSH command prefix for connecting to a server.
+ * Uses TAILNET_DOMAIN env var - no hardcoded values.
  */
 export async function getServerSshCommand(serverHostname: string): Promise<string> {
-  // Use Tailscale if available, otherwise direct IP
-  const tailscaleHostname = serverHostname.includes('.ts.net') 
-    ? serverHostname 
-    : `${serverHostname.split('.')[0]}.tailnet-xxxx.ts.net`;
+  // Use Tailscale if available, otherwise direct IP/hostname
+  const targetHost = serverHostname.includes('.ts.net')
+    ? serverHostname
+    : `${serverHostname.split('.')[0]}.${TAILNET_DOMAIN}`;
 
-  return `ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -i ${SSH_KEY_PATH} ${SSH_USER}@${tailscaleHostname}`;
-}
-
-/**
- * Update server resource allocation after creating/destroying CloudPod.
- */
-export async function updateServerAllocation(
-  serverId: string,
-  memoryChange: number,
-  diskChange: number,
-  cloudPodCountChange: number
-): Promise<void> {
-  await prisma.server.update({
-    where: { id: serverId },
-    data: {
-      allocatedMemoryMb: { increment: memoryChange },
-      allocatedDiskGb: { increment: diskChange },
-      currentCloudPods: { increment: cloudPodCountChange },
-      updatedAt: new Date(),
-    },
-  });
-
-  logger.debug('Server allocation updated', {
-    serverId,
-    memoryChange,
-    diskChange,
-    cloudPodCountChange,
-  });
+  return `ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -i ${SSH_KEY_PATH} ${SSH_USER}@${targetHost}`;
 }
 
 /**
@@ -195,7 +211,8 @@ export async function getServerById(serverId: string): Promise<Server | null> {
  */
 export async function getAllServers(): Promise<Server[]> {
   const servers = await prisma.server.findMany({
-    orderBy: [{ region: 'asc' }, { hostname: 'asc' }],
+    where: { isActive: true },
+    orderBy: [{ location: 'asc' }, { hostname: 'asc' }],
   });
 
   return servers as Server[];
@@ -211,8 +228,8 @@ export async function checkServerHealth(serverId: string): Promise<{
 }> {
   const server = await getServerById(serverId);
 
-  if (!server) {
-    return { healthy: false, latencyMs: null, error: 'Server not found' };
+  if (!server || !server.hostname) {
+    return { healthy: false, latencyMs: null, error: 'Server not found or no hostname' };
   }
 
   const sshCmd = await getServerSshCommand(server.hostname);
@@ -250,7 +267,7 @@ export async function getServerResourceUsage(serverId: string): Promise<{
 } | null> {
   const server = await getServerById(serverId);
 
-  if (!server) {
+  if (!server || !server.hostname) {
     return null;
   }
 
@@ -290,67 +307,42 @@ export async function getServerResourceUsage(serverId: string): Promise<{
 }
 
 /**
- * Sync server resource allocation from actual CloudPods.
- * Run periodically to fix any allocation drift.
+ * Get CloudPod resource usage aggregated by tenant.
+ * This replaces the old server-level allocation tracking.
  */
-export async function syncServerAllocations(): Promise<void> {
-  const servers = await prisma.server.findMany();
+export async function getCloudPodUsageByTenant(tenantId: string): Promise<{
+  totalCloudPods: number;
+  totalMemoryMb: number;
+  totalDiskGb: number;
+  totalCores: number;
+}> {
+  const aggregation = await prisma.cloudPod.aggregate({
+    where: {
+      tenantId,
+      status: { notIn: ['deleted', 'failed'] },
+    },
+    _sum: {
+      memoryMb: true,
+      diskGb: true,
+      cores: true,
+    },
+    _count: true,
+  });
 
-  for (const server of servers) {
-    // Get actual allocations from CloudPods
-    const aggregation = await prisma.cloudPod.aggregate({
-      where: {
-        serverId: server.id,
-        status: { notIn: ['DELETED', 'FAILED'] },
-      },
-      _sum: {
-        memoryMb: true,
-        diskGb: true,
-      },
-      _count: true,
-    });
-
-    const actualMemory = aggregation._sum.memoryMb ?? 0;
-    const actualDisk = aggregation._sum.diskGb ?? 0;
-    const actualCount = aggregation._count;
-
-    // Update if different
-    if (
-      server.allocatedMemoryMb !== actualMemory ||
-      server.allocatedDiskGb !== actualDisk ||
-      server.currentCloudPods !== actualCount
-    ) {
-      await prisma.server.update({
-        where: { id: server.id },
-        data: {
-          allocatedMemoryMb: actualMemory,
-          allocatedDiskGb: actualDisk,
-          currentCloudPods: actualCount,
-          updatedAt: new Date(),
-        },
-      });
-
-      logger.info('Server allocation synced', {
-        serverId: server.id,
-        hostname: server.hostname,
-        oldMemory: server.allocatedMemoryMb,
-        newMemory: actualMemory,
-        oldDisk: server.allocatedDiskGb,
-        newDisk: actualDisk,
-        oldCount: server.currentCloudPods,
-        newCount: actualCount,
-      });
-    }
-  }
+  return {
+    totalCloudPods: aggregation._count,
+    totalMemoryMb: aggregation._sum?.memoryMb ?? 0,
+    totalDiskGb: aggregation._sum?.diskGb ?? 0,
+    totalCores: aggregation._sum?.cores ?? 0,
+  };
 }
 
 export default {
   selectServerForCloudPod,
   getServerSshCommand,
-  updateServerAllocation,
   getServerById,
   getAllServers,
   checkServerHealth,
   getServerResourceUsage,
-  syncServerAllocations,
+  getCloudPodUsageByTenant,
 };

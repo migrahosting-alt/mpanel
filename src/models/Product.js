@@ -46,7 +46,14 @@ class Product {
     query += ' ORDER BY created_at DESC';
     
     const result = await pool.query(query, params);
-    return result.rows;
+    // Map database columns to frontend format
+    return result.rows.map(row => ({
+      ...row,
+      active: row.status === 'active',
+      category: row.type?.toLowerCase() || 'other',
+      features: row.features || [],
+      billing_cycle: row.billing_cycle || 'monthly'
+    }));
   }
 
   static async update(id, updates) {

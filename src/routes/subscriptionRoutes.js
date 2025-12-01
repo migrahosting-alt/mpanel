@@ -4,6 +4,7 @@ import {
   createSubscription,
   getSubscriptions,
   getSubscription,
+  updateSubscription,
   cancelSubscription,
   suspendSubscription,
   reactivateSubscription,
@@ -25,6 +26,7 @@ router.post('/', createSubscription);
 router.post('/stripe', createStripeSubscription); // Stripe-powered subscription
 router.get('/', getSubscriptions);
 router.get('/:id', getSubscription);
+router.patch('/:id', updateSubscription); // Update subscription details
 router.put('/:id/change-plan', changePlan); // Change plan (upgrade/downgrade)
 router.post('/:id/cancel', cancelSubscription);
 router.post('/:id/suspend', suspendSubscription);

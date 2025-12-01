@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { productsApi } from '../lib/api';
 import toast from 'react-hot-toast';
 import Modal from '../components/Modal';
 
 export default function Products() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -17,6 +19,14 @@ export default function Products() {
     status: 'active',
     description: '',
   });
+
+  // Handle ?action=create from Quick Actions
+  useEffect(() => {
+    if (searchParams.get('action') === 'create') {
+      setShowModal(true);
+      setSearchParams({});
+    }
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     loadProducts();

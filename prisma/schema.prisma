@@ -1,0 +1,1096 @@
+// mPanel Backend - Prisma Schema
+// Enterprise-grade multi-tenant billing & hosting management
+// See docs/MPANEL_BACKEND_SPEC.md for full specification
+
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+// ============================================
+// CORE TENANT & USER MANAGEMENT
+// ============================================
+
+model Tenant {
+  id           String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  name         String
+  domain       String      @unique                    // Legacy column (keep for JS routes)
+  slug         String      @unique                    // Prisma column (synced from domain)
+  status       String      @default("active")         // Legacy column (keep for JS routes)
+  isActive     Boolean     @default(true) @map("is_active")  // Prisma column
+  billingEmail String?     @map("billing_email")      // TS: tenantService.ts
+  address      String?                                // TS: tenantService.ts
+  settings     Json?       @default("{}")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+  deletedAt    DateTime?   @map("deleted_at")         // TS: tenantService.ts (soft delete)
+
+  users           User[]
+  products        Product[]
+  customers       Customer[]
+  servers         Server[]
+  domains         Domain[]
+  subscriptions   Subscription[]
+  orders          Order[]
+  dnsZones        DnsZone[]
+  mailAccounts    MailAccount[]
+  hostingAccounts HostingAccount[]
+  vpsInstances    VpsInstance[]
+  backupJobs      BackupJob[]
+  auditLogs       AuditLog[]
+  jobs            Job[]
+  tenantUsers     TenantUser[]                        // TS: tenantService.ts, userService.ts
+  
+  // CloudPods relations
+  cloudPods       CloudPod[]
+  cloudPodJobs    CloudPodJob[]
+  cloudPodEvents  CloudPodEvent[]
+  cloudPodQuota   CloudPodQuota?
+
+  @@map("tenants")
+}
+
+model User {
+  id                String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId          String?  @map("tenant_id") @db.Uuid
+  email             String   @unique
+  passwordHash      String   @map("password_hash")
+  firstName         String?  @map("first_name")       // Legacy column (keep for JS routes)
+  lastName          String?  @map("last_name")        // Legacy column (keep for JS routes)
+  displayName       String?  @map("display_name")     // Prisma column
+  name              String?                           // TS: userService.ts uses 'name'
+  role              String   @default("customer")     // Legacy: varchar (JS routes use 'admin', 'customer', 'super_admin')
+  status            String   @default("active")       // Legacy column (keep for JS routes)
+  isActive          Boolean  @default(true) @map("is_active")  // Prisma column
+  emailVerified     Boolean  @default(false) @map("email_verified")
+  lastLoginAt       DateTime? @map("last_login_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")      // TS: userService.ts (soft delete)
+
+  tenant            Tenant?  @relation(fields: [tenantId], references: [id])
+  auditLogs         AuditLog[]
+  customers         Customer[]
+  tenantUsers       TenantUser[]                      // TS: userService.ts, tenantService.ts
+
+  @@map("users")
+}
+
+// NOTE: UserRole enum removed - DB uses varchar for flexibility with JS routes
+// Valid roles: 'super_admin', 'admin', 'support', 'billing', 'read_only', 'customer'
+
+// ============================================
+// TENANT-USER MEMBERSHIP (Multi-tenant RBAC)
+// ============================================
+
+/// TenantUser - Join table for User-Tenant membership with roles
+/// TS: userService.ts (getUserTenants, getUserTenantRole)
+/// TS: tenantService.ts (getOrCreateTenantForUser, addUserToTenant, getTenantUsers)
+model TenantUser {
+  id        String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tenantId  String    @map("tenant_id") @db.Uuid
+  role      String    @default("MEMBER")              // OWNER | ADMIN | MEMBER | BILLING | VIEWER
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  user      User      @relation(fields: [userId], references: [id])
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+
+  @@unique([userId, tenantId])
+  @@index([tenantId])
+  @@map("tenant_users")
+}
+
+// ============================================
+// INFRASTRUCTURE
+// ============================================
+
+model Server {
+  id          String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId    String        @map("tenant_id") @db.Uuid
+  name        String
+  hostname    String?
+  role        String        @default("web")  // Legacy: varchar instead of enum
+  ipAddress   String        @map("ip_address")
+  internalIp  String?       @map("internal_ip")
+  location    String?
+  provider    String?
+  status      String        @default("active")  // Legacy column
+  isActive    Boolean       @default(true) @map("is_active")
+  cpu         Int?
+  ramGb       Int?          @map("ram_gb")
+  diskGb      Int?          @map("disk_gb")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  tenant      Tenant        @relation(fields: [tenantId], references: [id])
+  hostingAccounts HostingAccount[]
+  vpsInstances VpsInstance[]
+  metrics     ServerMetric[]
+
+  @@map("servers")
+}
+
+// NOTE: ServerRole enum removed - DB uses varchar for flexibility
+
+model ServerMetric {
+  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  serverId    String   @map("server_id") @db.Uuid
+  cpuUsage    Float?   @map("cpu_usage")
+  memoryUsage Float?   @map("memory_usage")
+  diskUsage   Float?   @map("disk_usage")
+  uptime      Int?
+  timestamp   DateTime @default(now())
+
+  server      Server   @relation(fields: [serverId], references: [id])
+
+  @@map("server_metrics")
+}
+
+// ============================================
+// PRODUCTS & PLANS
+// ============================================
+
+model Product {
+  id          String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId    String      @map("tenant_id") @db.Uuid
+  name        String
+  slug        String      @unique
+  code        String?     @unique                     // TS: subscriptionService.ts (getProductByCode)
+  type        String      @default("shared_hosting")  // Legacy: varchar instead of enum
+  description String?
+  price       Decimal?    @db.Decimal(10, 2)          // TS: subscriptionService.ts
+  billingInterval String? @map("billing_interval")    // TS: subscriptionService.ts
+  status      String      @default("active")  // Legacy column
+  isActive    Boolean     @default(true) @map("is_active")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  prices      Price[]
+
+  @@map("products")
+}
+
+// NOTE: ProductType enum removed - DB uses varchar for flexibility
+
+model Price {
+  id               String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId         String?     @map("tenant_id") @db.Uuid
+  productId        String      @map("product_id") @db.Uuid
+  name             String
+  slug             String      @unique
+  interval         String      @default("monthly")  // Legacy: varchar instead of enum
+  amountCents      Int         @map("amount_cents")
+  currency         String      @default("usd")
+  isPopular        Boolean     @default(false) @map("is_popular")
+  isActive         Boolean     @default(true) @map("is_active")
+  limitsJson       Json?       @map("limits_json")
+  stripeProductId  String?     @map("stripe_product_id")
+  stripePriceId    String?     @map("stripe_price_id")
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
+
+  product          Product     @relation(fields: [productId], references: [id])
+  subscriptions    Subscription[]
+  orders           Order[]
+
+  @@map("prices")
+}
+
+// NOTE: PriceInterval enum removed - DB uses varchar
+
+// ============================================
+// CUSTOMERS & ORDERS
+// ============================================
+
+model Customer {
+  id              String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId        String         @map("tenant_id") @db.Uuid
+  userId          String?        @map("user_id") @db.Uuid  // Link to user account
+  email           String
+  companyName     String?        @map("company_name")  // Legacy column
+  fullName        String?        @map("full_name")
+  firstName       String?        @map("first_name")
+  lastName        String?        @map("last_name")
+  phone           String?
+  stripeCustomerId String?       @map("stripe_customer_id")
+  status          String         @default("active")  // Legacy column
+  isActive        Boolean        @default(true) @map("is_active")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  tenant          Tenant         @relation(fields: [tenantId], references: [id])
+  user            User?          @relation(fields: [userId], references: [id])
+  subscriptions   Subscription[]
+  orders          Order[]
+
+  @@unique([tenantId, email])
+  @@map("customers")
+}
+
+model Order {
+  id               String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId         String          @map("tenant_id") @db.Uuid
+  customerId       String          @map("customer_id") @db.Uuid
+  priceId          String?         @map("price_id") @db.Uuid
+  status           String          @default("pending")  // Legacy: varchar instead of enum
+  totalAmountCents Int             @map("total_amount_cents")
+  currency         String          @default("usd")
+  stripePaymentIntentId String?    @map("stripe_payment_intent_id")
+  stripeSessionId  String?         @map("stripe_session_id")
+  externalOrderId  String?         @map("external_order_id")
+  metadata         Json?
+  notes            String?
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+
+  tenant           Tenant          @relation(fields: [tenantId], references: [id])
+  customer         Customer        @relation(fields: [customerId], references: [id])
+  price            Price?          @relation(fields: [priceId], references: [id])
+  subscription     Subscription?
+  jobs             Job[]
+
+  @@map("stripe_orders")
+}
+
+// NOTE: OrderStatus enum removed - DB uses varchar
+
+model Subscription {
+  id                   String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId             String        @map("tenant_id") @db.Uuid
+  customerId           String?       @map("customer_id") @db.Uuid  // Optional for direct user subscriptions
+  priceId              String?       @map("price_id") @db.Uuid
+  orderId              String?       @unique @map("order_id") @db.Uuid
+  domainId             String?       @map("domain_id") @db.Uuid
+  productId            String?       @map("product_id") @db.Uuid
+  productCode          String?       @map("product_code")  // Marketing site uses product codes
+  planCode             String?       @map("plan_code")     // TS: subscriptionService.ts
+  billingCycle         String?       @map("billing_cycle") // TS: 'monthly' | 'yearly'
+  status               String        @default("active")    // Legacy: varchar instead of enum
+  startedAt            DateTime      @default(now()) @map("started_at")
+  currentPeriodStart   DateTime      @default(now()) @map("current_period_start")
+  currentPeriodEnd     DateTime?     @map("current_period_end")
+  renewsAt             DateTime?     @map("renews_at")     // TS: subscriptionService.ts
+  cancelAt             DateTime?     @map("cancel_at")     // TS: subscriptionService.ts
+  cancelAtPeriodEnd    Boolean       @default(false) @map("cancel_at_period_end")
+  cancelledAt          DateTime?     @map("cancelled_at")
+  stripeSubscriptionId String?       @map("stripe_subscription_id")
+  externalSubscriptionId String?     @unique @map("external_subscription_id") // TS: subscriptionService.ts
+  quantity             Int           @default(1)           // TS: subscriptionService.ts
+  price                Decimal?      @db.Decimal(10, 2)    // TS: subscriptionService.ts
+  currency             String        @default("USD")       // TS: subscriptionService.ts
+  addOns               Json?         @map("add_ons")       // TS: subscriptionService.ts
+  metadata             Json?                               // TS: subscriptionService.ts
+  createdAt            DateTime      @default(now()) @map("created_at")
+  updatedAt            DateTime      @updatedAt @map("updated_at")
+  deletedAt            DateTime?     @map("deleted_at")    // TS: subscriptionService.ts (soft delete)
+
+  tenant               Tenant        @relation(fields: [tenantId], references: [id])
+  customer             Customer?     @relation(fields: [customerId], references: [id])
+  price_rel            Price?        @relation(fields: [priceId], references: [id])
+  order                Order?        @relation(fields: [orderId], references: [id])
+
+  @@map("subscriptions")
+}
+
+// NOTE: SubscriptionStatus enum removed - DB uses varchar
+
+// ============================================
+// DOMAINS & DNS
+// ============================================
+
+model Domain {
+  id          String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId    String      @map("tenant_id") @db.Uuid
+  name        String      @unique
+  status      String      @default("active")  // Legacy: varchar instead of enum
+  autoDns     Boolean     @default(true) @map("auto_dns")
+  autoMail    Boolean     @default(true) @map("auto_mail")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  dnsZones    DnsZone[]
+  hosting     HostingAccount?
+  vps         VpsInstance?
+  mailAccounts MailAccount[]
+
+  @@map("domains")
+}
+
+// NOTE: DomainStatus enum removed - DB uses varchar
+
+model DnsZone {
+  id          String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId    String      @map("tenant_id") @db.Uuid
+  domainId    String      @map("domain_id") @db.Uuid
+  pdnsId      Int?        @map("pdns_id")
+  soaSerial   Int?        @map("soa_serial")
+  isSynced    Boolean     @default(false) @map("is_synced")
+  lastSyncAt  DateTime?   @map("last_sync_at")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  domain      Domain      @relation(fields: [domainId], references: [id])
+  records     DnsRecord[]
+
+  @@map("dns_zones")
+}
+
+model DnsRecord {
+  id          String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  zoneId      String      @map("zone_id") @db.Uuid
+  name        String
+  type        String
+  content     String
+  ttl         Int         @default(3600)
+  priority    Int?
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  zone        DnsZone     @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  @@map("dns_records")
+}
+
+// ============================================
+// HOSTING SERVICES
+// ============================================
+
+model HostingAccount {
+  id           String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId     String      @map("tenant_id") @db.Uuid
+  domainId     String      @unique @map("domain_id") @db.Uuid
+  serverId     String      @map("server_id") @db.Uuid
+  systemUser   String?     @map("system_user")
+  homeDir      String?     @map("home_dir")
+  phpVersion   String?     @map("php_version")
+  status       String      @default("active")  // Legacy: varchar instead of enum
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  tenant       Tenant      @relation(fields: [tenantId], references: [id])
+  domain       Domain      @relation(fields: [domainId], references: [id])
+  server       Server      @relation(fields: [serverId], references: [id])
+
+  @@map("websites")
+}
+
+// NOTE: HostingStatus enum removed - DB uses varchar
+
+model VpsInstance {
+  id          String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId    String      @map("tenant_id") @db.Uuid
+  domainId    String?     @unique @map("domain_id") @db.Uuid
+  serverId    String      @map("server_id") @db.Uuid
+  name        String
+  ipv4        String?
+  status      String      @default("pending")  // Legacy: varchar instead of enum
+  cpuCores    Int?        @map("cpu_cores")
+  memoryMb    Int?        @map("memory_mb")
+  diskGb      Int?        @map("disk_gb")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  domain      Domain?     @relation(fields: [domainId], references: [id])
+  server      Server      @relation(fields: [serverId], references: [id])
+
+  @@map("deployments")
+}
+
+// NOTE: VpsStatus enum removed - DB uses varchar
+
+// ============================================
+// MAIL SERVICES
+// ============================================
+
+model MailAccount {
+  id          String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId    String      @map("tenant_id") @db.Uuid
+  domainId    String      @map("domain_id") @db.Uuid
+  email       String
+  mailbox     String?
+  status      String      @default("active")  // Legacy: varchar instead of enum
+  quotaMb     Int?        @map("quota_mb")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  domain      Domain      @relation(fields: [domainId], references: [id])
+
+  @@unique([email])
+  @@map("mailboxes")
+}
+
+// NOTE: MailStatus enum removed - DB uses varchar
+
+// ============================================
+// BACKUP SERVICES
+// ============================================
+
+model BackupJob {
+  id          String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId    String      @map("tenant_id") @db.Uuid
+  type        String      // Legacy: varchar instead of enum
+  targetId    String      @map("target_id") @db.Uuid
+  status      String      @default("pending")  // Legacy: varchar instead of enum
+  lastRunAt   DateTime?   @map("last_run_at")
+  nextRunAt   DateTime?   @map("next_run_at")
+  filePath    String?     @map("file_path")
+  sizeBytes   BigInt?     @map("size_bytes")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+
+  @@map("backups")
+}
+
+// NOTE: BackupType, BackupStatus enums removed - DB uses varchar
+
+// ============================================
+// JOB QUEUE & PROVISIONING
+// ============================================
+
+model Job {
+  id          String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId    String      @map("tenant_id") @db.Uuid
+  orderId     String?     @map("order_id") @db.Uuid
+  type        String      // Legacy: varchar instead of enum
+  payload     Json
+  status      String      @default("pending")  // Legacy: varchar instead of enum
+  attempts    Int         @default(0)
+  lastError   String?     @map("last_error")
+  startedAt   DateTime?   @map("started_at")
+  completedAt DateTime?   @map("completed_at")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  order       Order?      @relation(fields: [orderId], references: [id])
+
+  @@index([status, createdAt])
+  @@map("jobs")
+}
+
+// NOTE: JobType, JobStatus enums removed - DB uses varchar
+
+// ============================================
+// AUDIT & SECURITY
+// ============================================
+
+model AuditLog {
+  id          String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId    String      @map("tenant_id") @db.Uuid
+  userId      String?     @map("user_id") @db.Uuid
+  action      String
+  resourceType String?    @map("resource_type")
+  resourceId  String?     @map("resource_id")
+  ipAddress   String?     @map("ip_address")
+  userAgent   String?     @map("user_agent")
+  details     Json?
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  user        User?       @relation(fields: [userId], references: [id])
+
+  @@index([tenantId, createdAt])
+  @@index([userId, createdAt])
+  @@map("audit_logs")
+}
+
+// ============================================
+// SSL CERTIFICATES
+// ============================================
+
+model SslCertificate {
+  id          String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId    String?     @map("tenant_id") @db.Uuid
+  domainId    String      @map("domain_id") @db.Uuid
+  commonName  String      @map("common_name")
+  issuer      String?
+  validFrom   DateTime    @map("valid_from")
+  validTo     DateTime    @map("valid_to")
+  autoRenew   Boolean     @default(true) @map("auto_renew")
+  status      String      @default("pending")  // Legacy: varchar instead of enum
+  certPath    String?     @map("cert_path")
+  keyPath     String?     @map("key_path")
+  chainPath   String?     @map("chain_path")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  @@index([validTo, autoRenew])
+  @@map("ssl_certificates")
+}
+
+// NOTE: SslStatus enum removed - DB uses varchar
+
+// ============================================
+// CLOUDPODS (MigraCloud)
+// ============================================
+
+model CloudPod {
+  id                String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId          String      @map("tenant_id") @db.Uuid
+  vmid              Int         @unique
+  hostname          String
+  ip                String?     // "10.1.10.91"
+  region            String      @default("migra-us-east-1")
+  status            String      @default("provisioning") // "provisioning" | "active" | "failed" | "deleting" | "deleted"
+  pool              String      @default("ClientPods")   // Proxmox resource pool
+  
+  // Resources
+  cores             Int         @default(2)
+  memoryMb          Int         @default(2048) @map("memory_mb")
+  swapMb            Int         @default(512) @map("swap_mb")
+  diskGb            Int         @default(8) @map("disk_gb")
+  storage           String      @default("clients-main")
+  bridge            String      @default("vmbr0")
+  
+  // Plan snapshot at provisioning (optional)
+  planSnapshot      Json?       @map("plan_snapshot")
+  
+  // Blueprint (optional)
+  blueprintId       String?     @map("blueprint_id") @db.Uuid
+  
+  // Health tracking
+  lastBackupAt      DateTime?   @map("last_backup_at")
+  lastHealthStatus  String?     @map("last_health_status")  // "ok" | "warning" | "critical"
+  lastHealthChecked DateTime?   @map("last_health_checked")
+  
+  // Timestamps
+  createdAt         DateTime    @default(now()) @map("created_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
+  deletedAt         DateTime?   @map("deleted_at")
+  
+  tenant            Tenant      @relation(fields: [tenantId], references: [id])
+  blueprint         CloudPodBlueprint? @relation(fields: [blueprintId], references: [id])
+  jobs              CloudPodJob[]
+  events            CloudPodEvent[]
+  
+  @@index([tenantId, status])
+  @@index([status, createdAt])
+  @@map("cloud_pods")
+}
+
+model CloudPodJob {
+  id          String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId    String      @map("tenant_id") @db.Uuid
+  cloudPodId  String?     @map("cloud_pod_id") @db.Uuid
+  
+  type        String      // "CREATE" | "DESTROY" | "BACKUP" | "HEALTH_CHECK" | "SCALE"
+  status      String      @default("queued") // "queued" | "running" | "success" | "failed"
+  payload     Json
+  result      Json?
+  error       String?
+  
+  // Job queue tracking
+  attempts    Int         @default(0)
+  bullJobId   String?     @map("bull_job_id")  // BullMQ job ID for correlation
+  
+  createdAt   DateTime    @default(now()) @map("created_at")
+  startedAt   DateTime?   @map("started_at")
+  finishedAt  DateTime?   @map("finished_at")
+  
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  cloudPod    CloudPod?   @relation(fields: [cloudPodId], references: [id])
+  
+  @@index([tenantId, status])
+  @@index([status, createdAt])
+  @@index([cloudPodId])
+  @@map("cloud_pod_jobs")
+}
+
+model CloudPodEvent {
+  id          String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId    String      @map("tenant_id") @db.Uuid
+  cloudPodId  String?     @map("cloud_pod_id") @db.Uuid
+  
+  type        String      // "INFO" | "WARN" | "ERROR" | "STATE_CHANGE" | "BACKUP" | "HEALTH"
+  message     String
+  data        Json?
+  
+  createdAt   DateTime    @default(now()) @map("created_at")
+  
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  cloudPod    CloudPod?   @relation(fields: [cloudPodId], references: [id])
+  
+  @@index([tenantId, createdAt])
+  @@index([cloudPodId, createdAt])
+  @@map("cloud_pod_events")
+}
+
+model CloudPodQuota {
+  id             String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId       String      @unique @map("tenant_id") @db.Uuid
+  
+  // Limits (from Plan or custom override)
+  maxCloudPods   Int         @default(5) @map("max_cloud_pods")
+  maxCpuCores    Int         @default(8) @map("max_cpu_cores")
+  maxRamMb       Int         @default(16384) @map("max_ram_mb")
+  maxDiskGb      Int         @default(100) @map("max_disk_gb")
+  
+  // Current usage (updated on create/destroy/scale)
+  usedCloudPods  Int         @default(0) @map("used_cloud_pods")
+  usedCpuCores   Int         @default(0) @map("used_cpu_cores")
+  usedRamMb      Int         @default(0) @map("used_ram_mb")
+  usedDiskGb     Int         @default(0) @map("used_disk_gb")
+  
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+  
+  tenant         Tenant      @relation(fields: [tenantId], references: [id])
+  
+  @@map("cloud_pod_quotas")
+}
+
+model CloudPodBlueprint {
+  id          String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  name        String
+  slug        String      @unique
+  description String?
+  
+  // JSON spec: resources, dependencies, postCreate hooks
+  spec        Json
+  
+  isActive    Boolean     @default(true) @map("is_active")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+  
+  cloudPods   CloudPod[]
+  
+  @@map("cloud_pod_blueprints")
+}
+
+model CloudPodPlan {
+  id           String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  name         String
+  slug         String      @unique
+  description  String?
+  
+  // Resource defaults
+  defaultCores    Int      @default(2) @map("default_cores")
+  defaultRamMb    Int      @default(2048) @map("default_ram_mb")
+  defaultDiskGb   Int      @default(8) @map("default_disk_gb")
+  
+  // Quota limits for tenants on this plan
+  maxCloudPods    Int      @default(5) @map("max_cloud_pods")
+  maxCpuCores     Int      @default(8) @map("max_cpu_cores")
+  maxRamMb        Int      @default(16384) @map("max_ram_mb")
+  maxDiskGb       Int      @default(100) @map("max_disk_gb")
+  
+  // Backup policy
+  backupPolicy    String   @default("basic") @map("backup_policy") // "basic" | "standard" | "enterprise"
+  
+  // Pricing (cents)
+  monthlyPriceCents Int    @default(0) @map("monthly_price_cents")
+  currency          String @default("usd")
+  
+  isActive    Boolean     @default(true) @map("is_active")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+  
+  @@map("cloud_pod_plans")
+}
+
+// ============================================
+// CLOUDPODS ENTERPRISE FEATURES
+// ============================================
+
+/// CloudPods Audit Log - Records all actions for compliance & debugging
+model CloudPodAudit {
+  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  userId      String?  @map("user_id") @db.Uuid  // null = system/worker
+  podId       String?  @map("pod_id") @db.Uuid   // FK to CloudPod.id
+  vmid        Int?
+  action      String   // e.g. POD_CREATED, POD_DESTROYED, SECURITY_GROUP_UPDATED
+  category    String   // lifecycle, quota, security, backup, health, webhook, system
+  ipAddress   String?  @map("ip_address")
+  userAgent   String?  @map("user_agent")
+  details     Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, podId])
+  @@index([tenantId, createdAt])
+  @@index([action])
+  @@index([category])
+  @@index([createdAt])
+  @@map("cloud_pod_audit")
+}
+
+/// CloudPods Security Groups - Firewall rules like AWS Security Groups
+model CloudPodSecurityGroup {
+  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  name        String
+  description String?
+  isDefault   Boolean  @default(false) @map("is_default")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  rules       CloudPodSecurityGroupRule[]
+  assignments CloudPodSecurityGroupAssignment[]
+
+  @@unique([tenantId, name])
+  @@map("cloud_pod_security_groups")
+}
+
+model CloudPodSecurityGroupRule {
+  id               String                 @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  securityGroupId  String                 @map("security_group_id") @db.Uuid
+  direction        String                 // ingress | egress
+  protocol         String                 // tcp | udp | icmp | any
+  portRange        String                 @map("port_range") // "22", "80-443", "*"
+  cidr             String                 // "0.0.0.0/0", "10.1.10.0/24"
+  description      String?
+  createdAt        DateTime               @default(now()) @map("created_at")
+
+  securityGroup    CloudPodSecurityGroup  @relation(fields: [securityGroupId], references: [id], onDelete: Cascade)
+
+  @@map("cloud_pod_security_group_rules")
+}
+
+model CloudPodSecurityGroupAssignment {
+  id              String                @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  podId           String                @map("pod_id") @db.Uuid // CloudPod.id
+  securityGroupId String                @map("security_group_id") @db.Uuid
+  createdAt       DateTime              @default(now()) @map("created_at")
+
+  securityGroup   CloudPodSecurityGroup @relation(fields: [securityGroupId], references: [id], onDelete: Cascade)
+
+  @@unique([podId, securityGroupId])
+  @@map("cloud_pod_security_group_assignments")
+}
+
+/// CloudPods Health Status - Tracks health check results and auto-healing
+model CloudPodHealthStatus {
+  id                 String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  podId              String   @unique @map("pod_id") @db.Uuid
+  lastStatus         String   @map("last_status") // healthy | unhealthy | unknown
+  lastCheckedAt      DateTime @map("last_checked_at")
+  lastError          String?  @map("last_error")
+  consecutiveFailures Int     @default(0) @map("consecutive_failures")
+
+  @@map("cloud_pod_health_status")
+}
+
+/// CloudPods Usage Samples - Raw metrics collected every N minutes
+model CloudPodUsageSample {
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  podId      String   @map("pod_id") @db.Uuid
+  timestamp  DateTime
+  cpuPct     Float    @map("cpu_pct")
+  memoryMb   Int      @map("memory_mb")
+  diskGb     Float    @map("disk_gb")
+  netInMb    Float    @map("net_in_mb")
+  netOutMb   Float    @map("net_out_mb")
+
+  @@index([tenantId, podId, timestamp])
+  @@index([podId, timestamp])
+  @@map("cloud_pod_usage_samples")
+}
+
+/// CloudPods Usage Daily - Aggregated daily metrics for billing/analytics
+model CloudPodUsageDaily {
+  id            String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  podId         String   @map("pod_id") @db.Uuid
+  date          DateTime @db.Date
+  avgCpuPct     Float    @map("avg_cpu_pct")
+  maxCpuPct     Float    @map("max_cpu_pct")
+  avgMemoryMb   Int      @map("avg_memory_mb")
+  maxMemoryMb   Int      @map("max_memory_mb")
+  diskGb        Float    @map("disk_gb")
+  totalNetInMb  Float    @map("total_net_in_mb")
+  totalNetOutMb Float    @map("total_net_out_mb")
+
+  @@unique([tenantId, podId, date])
+  @@index([tenantId, date])
+  @@map("cloud_pod_usage_daily")
+}
+
+/// CloudPods Backup Policy - Scheduled backup/snapshot configuration
+model CloudPodBackupPolicy {
+  id             String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId       String?  @map("tenant_id") @db.Uuid
+  podId          String?  @map("pod_id") @db.Uuid
+  name           String
+  schedule       String   // cron expression or "daily" | "weekly" | "hourly"
+  retentionCount Int      @default(7) @map("retention_count")
+  type           String   // snapshot | full-backup
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  backups        CloudPodBackup[]
+
+  @@index([tenantId])
+  @@index([podId])
+  @@map("cloud_pod_backup_policies")
+}
+
+/// CloudPods Backup - Individual backup/snapshot records
+model CloudPodBackup {
+  id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  podId        String   @map("pod_id") @db.Uuid
+  policyId     String?  @map("policy_id") @db.Uuid
+  backupType   String   @map("backup_type") // snapshot | full-backup
+  location     String   // Proxmox snapshot name or backup path
+  status       String   // pending | running | completed | failed
+  sizeGb       Float?   @map("size_gb")
+  createdAt    DateTime @default(now()) @map("created_at")
+  completedAt  DateTime? @map("completed_at")
+  errorMessage String?  @map("error_message")
+
+  policy       CloudPodBackupPolicy? @relation(fields: [policyId], references: [id])
+
+  @@index([podId, createdAt])
+  @@index([status])
+  @@map("cloud_pod_backups")
+}
+
+/// CloudPods Webhook - Tenant webhook endpoint configuration
+model CloudPodWebhook {
+  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  name      String
+  url       String   // HTTPS endpoint
+  secret    String   // HMAC signing secret
+  events    Json     // string[] of subscribed events
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  deliveries CloudPodWebhookDelivery[]
+
+  @@index([tenantId, isActive])
+  @@map("cloud_pod_webhooks")
+}
+
+/// CloudPods Webhook Delivery - Delivery attempts and retry tracking
+model CloudPodWebhookDelivery {
+  id             String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  webhookId      String          @map("webhook_id") @db.Uuid
+  eventType      String          @map("event_type")
+  payload        Json
+  status         String          // pending | delivered | failed | permanently_failed
+  httpStatus     Int?            @map("http_status")
+  errorMessage   String?         @map("error_message")
+  attempts       Int             @default(0)
+  nextRetryAt    DateTime?       @map("next_retry_at")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  webhook        CloudPodWebhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextRetryAt])
+  @@index([webhookId, createdAt])
+  @@index([eventType])
+  @@map("cloud_pod_webhook_deliveries")
+}
+
+// ============================================
+// PLATFORM ENTERPRISE CORE
+// ============================================
+
+/// System Settings - Global configuration key-value store
+model SystemSetting {
+  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  namespace String   // e.g. "cloudpods", "billing", "branding", "platform"
+  key       String   // e.g. "auto_heal.enabled"
+  value     String   @db.Text
+  valueType String   @default("string") @map("value_type") // "string" | "number" | "boolean" | "json"
+  updatedBy String?  @map("updated_by") @db.Uuid
+  updatedAt DateTime @default(now()) @map("updated_at")
+
+  @@unique([namespace, key], name: "namespace_key")
+  @@map("system_settings")
+}
+
+/// Platform Jobs - Unified job queue for all async operations (Jobs v2)
+model PlatformJob {
+  id          String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  queue       String    // cloudpods, metrics, health, backups, webhooks, dns, hooks
+  type        String    // e.g. "pod.provision", "backup.create"
+  payload     Json
+  status      String    @default("pending") // pending | running | completed | failed | dead
+  priority    Int       @default(0)
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(5) @map("max_attempts")
+  scheduledAt DateTime  @default(now()) @map("scheduled_at")
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+  lastError   String?   @map("last_error") @db.Text
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([queue, status, scheduledAt])
+  @@index([status])
+  @@index([type])
+  @@map("platform_jobs")
+}
+
+/// Job Workers - Worker registration and heartbeat tracking
+model JobWorker {
+  id              String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  name            String   @unique
+  queue           String
+  status          String   @default("online") // online | offline | draining
+  lastHeartbeatAt DateTime @default(now()) @map("last_heartbeat_at")
+
+  @@index([queue, status])
+  @@map("job_workers")
+}
+
+/// System Events - Optional centralized logging
+model SystemEvent {
+  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  service   String   // api, cloudpods-worker, etc.
+  level     String   // info, warn, error
+  message   String   @db.Text
+  context   Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([service, level])
+  @@index([createdAt])
+  @@map("system_events")
+}
+
+/// Cloud Resource Plans - Billing plans for cloud resources
+model CloudResourcePlan {
+  id           String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  code         String  @unique // e.g. "cloud-basic", "cloud-plus"
+  name         String
+  description  String?
+  cpuCores     Int     @map("cpu_cores")
+  memoryMb     Int     @map("memory_mb")
+  diskGb       Int     @map("disk_gb")
+  bandwidthGb  Int?    @map("bandwidth_gb")
+  priceMonthly Decimal @map("price_monthly") @db.Decimal(10, 2)
+  isActive     Boolean @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  subscriptions CloudTenantResourceSubscription[]
+
+  @@map("cloud_resource_plans")
+}
+
+/// Cloud Tenant Resource Subscriptions - Tenant subscriptions to resource plans
+model CloudTenantResourceSubscription {
+  id        String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId  String    @map("tenant_id") @db.Uuid
+  planId    String    @map("plan_id") @db.Uuid
+  quantity  Int       @default(1) // number of plan units
+  status    String    @default("active") // active | cancelled
+  startedAt DateTime  @default(now()) @map("started_at")
+  endsAt    DateTime? @map("ends_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  plan CloudResourcePlan @relation(fields: [planId], references: [id])
+
+  @@index([tenantId, status])
+  @@map("cloud_tenant_resource_subscriptions")
+}
+
+/// Cloud Tenant Resource Totals - Materialized totals from subscriptions
+model CloudTenantResourceTotal {
+  id              String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId        String   @unique @map("tenant_id") @db.Uuid
+  cpuCoresTotal   Int      @default(0) @map("cpu_cores_total")
+  memoryMbTotal   Int      @default(0) @map("memory_mb_total")
+  diskGbTotal     Int      @default(0) @map("disk_gb_total")
+  bandwidthGbTotal Int?    @map("bandwidth_gb_total")
+  updatedAt       DateTime @default(now()) @map("updated_at")
+
+  @@map("cloud_tenant_resource_totals")
+}
+
+/// Cloud Pod Templates - Extended templates with app stacks
+model CloudPodTemplate {
+  id                  String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  code                String   @unique
+  name                String
+  type                String   // "os" | "app"
+  description         String?
+  proxmoxTemplateVmid Int?     @map("proxmox_template_vmid")
+  defaultNode         String?  @map("default_node")
+  storagePool         String?  @map("storage_pool")
+  networkBridge       String?  @map("network_bridge")
+  appStack            String?  @map("app_stack") // wordpress, laravel, node, etc.
+  minimumPlanCode     String?  @map("minimum_plan_code")
+  tags                Json?    // string[]
+  isActive            Boolean  @default(true) @map("is_active")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@map("cloud_pod_templates")
+}
+
+/// Cloud Pod Volumes - Additional storage volumes for pods
+model CloudPodVolume {
+  id              String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  podId           String   @map("pod_id") @db.Uuid
+  name            String
+  sizeGb          Int      @map("size_gb")
+  storagePool     String   @map("storage_pool")
+  status          String   @default("creating") // creating | attached | detached | error | deleting
+  proxmoxVolumeId String?  @map("proxmox_volume_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([podId])
+  @@index([status])
+  @@map("cloud_pod_volumes")
+}
+
+/// Cloud Pod DNS Records - DNS records for pod hostnames
+model CloudPodDnsRecord {
+  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  podId     String   @map("pod_id") @db.Uuid
+  zoneName  String   @map("zone_name") // e.g. "clientdomain.com"
+  hostname  String   // e.g. "app.clientdomain.com"
+  ipAddress String   @map("ip_address")
+  type      String   @default("A") // A | AAAA
+  status    String   @default("pending") // pending | active | error
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([podId])
+  @@index([zoneName])
+  @@map("cloud_pod_dns_records")
+}
+
+/// Cloud Pod Hooks - Lifecycle event hooks
+model CloudPodHook {
+  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  name      String
+  event     String   // pod.pre_create, pod.post_create, pod.pre_destroy, pod.post_destroy, pod.post_backup
+  type      String   // http | script
+  target    String   // URL or script identifier
+  isActive  Boolean  @default(true) @map("is_active")
+  config    Json?    // headers, timeout, env, etc.
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId, event])
+  @@index([event, isActive])
+  @@map("cloud_pod_hooks")
+}

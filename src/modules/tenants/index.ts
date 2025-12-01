@@ -12,15 +12,15 @@ export {
   getTenantById,
   getTenantBySlug,
   suspendTenant,
-  unsuspendTenant,
+  reactivateTenant,  // renamed from unsuspendTenant
   addUserToTenant,
   removeUserFromTenant,
-  setUserTenantRole,
   getTenantUsers,
 } from './tenantService.js';
 
 // Re-export types
 export type {
   Tenant,
-  TenantUser,
+  CreateTenantInput,
+  TenantWithOwner,
 } from './tenantService.js';

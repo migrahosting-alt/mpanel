@@ -2,12 +2,26 @@
  * NOTE FOR COPILOT:
  * This project follows the architecture defined in docs/mpanel-modules-spec.md.
  * User Service - Handles user account management.
+ * 
+ * P0.1 FIX (Enterprise Hardening):
+ * - ALL tenant-facing queries MUST filter by tenantId via TenantUser join
+ * - Uses bcrypt for password hashing (consistent with auth module)
+ * - Audit logging for user listing/viewing
+ * - No cross-tenant data leaks
  */
 
 import { prisma } from '../../config/database.js';
 import logger from '../../config/logger.js';
 import { writeAuditEvent } from '../security/auditService.js';
+import * as bcrypt from 'bcrypt';
 import crypto from 'crypto';
+
+// ============================================
+// CONSTANTS
+// ============================================
+
+/** Bcrypt rounds - matches auth.service.ts */
+const BCRYPT_ROUNDS = 12;
 
 // ============================================
 // TYPES
@@ -33,6 +47,11 @@ export interface CreateUserInput {
   status?: User['status'];
   emailVerified?: boolean;
   source?: 'signup' | 'billing_webhook' | 'admin_invite' | 'import';
+}
+
+export interface TenantUserInfo extends User {
+  tenantRole: string;
+  joinedAt: Date;
 }
 
 // ============================================
@@ -78,7 +97,7 @@ export async function getOrCreateUserForEmail(
       name: options.name ?? extractNameFromEmail(normalizedEmail),
       status: options.status ?? 'PENDING_VERIFICATION',
       emailVerified: options.emailVerified ?? false,
-      // Generate a random password that must be reset
+      // P0.4: Use bcrypt for password hashing (not PBKDF2)
       passwordHash: options.password
         ? await hashPassword(options.password)
         : await hashPassword(crypto.randomBytes(32).toString('hex')),
@@ -276,7 +295,258 @@ export async function getUserTenantRole(
 }
 
 // ============================================
-// HELPERS
+// TENANT-SCOPED USER HELPERS (P0.1 FIX)
+// ============================================
+
+/**
+ * List users within a specific tenant.
+ * Uses TenantUser join table to ensure tenant isolation.
+ * 
+ * @param tenantId - The tenant to list users for
+ * @param actorUserId - User performing the action (for audit)
+ * @param options - Pagination and filter options
+ */
+export async function listUsersForTenant(
+  tenantId: string,
+  actorUserId: string,
+  options: {
+    page?: number;
+    pageSize?: number;
+    search?: string;
+    role?: string;
+  } = {}
+): Promise<{ users: TenantUserInfo[]; total: number }> {
+  const { page = 1, pageSize = 50, search, role } = options;
+  const skip = (page - 1) * pageSize;
+
+  // Build where clause for TenantUser join
+  const where: any = {
+    tenantId,
+    deletedAt: null,
+    user: {
+      deletedAt: null,
+    },
+  };
+
+  if (role) {
+    where.role = role;
+  }
+
+  if (search) {
+    where.user.OR = [
+      { email: { contains: search, mode: 'insensitive' } },
+      { name: { contains: search, mode: 'insensitive' } },
+    ];
+  }
+
+  const [memberships, total] = await Promise.all([
+    prisma.tenantUser.findMany({
+      where,
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            status: true,
+            emailVerified: true,
+            role: true,
+            createdAt: true,
+            updatedAt: true,
+            lastLoginAt: true,
+            deletedAt: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+      skip,
+      take: pageSize,
+    }),
+    prisma.tenantUser.count({ where }),
+  ]);
+
+  const users: TenantUserInfo[] = memberships.map(m => ({
+    ...m.user,
+    tenantRole: m.role,
+    joinedAt: m.createdAt,
+  })) as TenantUserInfo[];
+
+  // Audit logging
+  await writeAuditEvent({
+    actorUserId,
+    tenantId,
+    type: 'TENANT_USERS_LISTED',
+    metadata: {
+      resultCount: users.length,
+      total,
+      page,
+      search: search ?? null,
+    },
+  });
+
+  logger.debug('Listed users for tenant', { tenantId, count: users.length, total });
+
+  return { users, total };
+}
+
+/**
+ * Get a specific user within a tenant context.
+ * Verifies user belongs to tenant via TenantUser join.
+ * Returns 404-style null if user not in tenant.
+ * 
+ * @param tenantId - The tenant context
+ * @param userId - The user to retrieve
+ * @param actorUserId - User performing the action (for audit)
+ */
+export async function getUserForTenant(
+  tenantId: string,
+  userId: string,
+  actorUserId: string
+): Promise<TenantUserInfo | null> {
+  // Must be in TenantUser to be visible
+  const membership = await prisma.tenantUser.findFirst({
+    where: {
+      tenantId,
+      userId,
+      deletedAt: null,
+    },
+    include: {
+      user: {
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          status: true,
+          emailVerified: true,
+          role: true,
+          createdAt: true,
+          updatedAt: true,
+          lastLoginAt: true,
+          deletedAt: true,
+        },
+      },
+    },
+  });
+
+  if (!membership || membership.user.deletedAt) {
+    logger.warn('User not found in tenant context', { tenantId, userId });
+    return null;
+  }
+
+  // Audit logging
+  await writeAuditEvent({
+    actorUserId,
+    tenantId,
+    type: 'TENANT_USER_VIEWED',
+    metadata: {
+      viewedUserId: userId,
+      viewedUserEmail: membership.user.email,
+    },
+  });
+
+  return {
+    ...membership.user,
+    tenantRole: membership.role,
+    joinedAt: membership.createdAt,
+  } as TenantUserInfo;
+}
+
+/**
+ * Verify a user belongs to a tenant before allowing access.
+ * Use this as a guard before any user-specific operation.
+ */
+export async function verifyUserInTenant(
+  tenantId: string,
+  userId: string
+): Promise<boolean> {
+  const membership = await prisma.tenantUser.findFirst({
+    where: {
+      tenantId,
+      userId,
+      deletedAt: null,
+    },
+  });
+
+  return !!membership;
+}
+
+// ============================================
+// PASSWORD HELPERS (P0.4 FIX - BCRYPT)
+// ============================================
+
+/**
+ * Hash a password using bcrypt.
+ * Consistent with auth.service.ts (12 rounds).
+ */
+export async function hashPassword(password: string): Promise<string> {
+  return bcrypt.hash(password, BCRYPT_ROUNDS);
+}
+
+/**
+ * Verify a password against a hash.
+ * Supports both bcrypt and legacy PBKDF2 hashes with auto-migration.
+ */
+export async function verifyPassword(
+  password: string,
+  hash: string
+): Promise<boolean> {
+  // Check if it's a bcrypt hash (starts with $2a$, $2b$, or $2y$)
+  if (hash.startsWith('$2')) {
+    return bcrypt.compare(password, hash);
+  }
+
+  // Legacy PBKDF2 format: "salt:hash"
+  if (hash.includes(':')) {
+    const [salt, storedHash] = hash.split(':');
+    const computedHash = crypto
+      .pbkdf2Sync(password, salt, 100000, 64, 'sha512')
+      .toString('hex');
+    return computedHash === storedHash;
+  }
+
+  return false;
+}
+
+/**
+ * Verify password with automatic migration to bcrypt.
+ * If legacy hash is valid, updates to bcrypt.
+ */
+export async function verifyPasswordWithMigration(
+  userId: string,
+  password: string,
+  currentHash: string
+): Promise<boolean> {
+  // Check if bcrypt hash
+  if (currentHash.startsWith('$2')) {
+    return bcrypt.compare(password, currentHash);
+  }
+
+  // Legacy PBKDF2 check
+  const isValid = await verifyPassword(password, currentHash);
+
+  if (isValid) {
+    // Migrate to bcrypt
+    const newHash = await hashPassword(password);
+    await prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash: newHash },
+    });
+
+    logger.info('Migrated user password hash to bcrypt', { userId });
+
+    await writeAuditEvent({
+      actorUserId: userId,
+      tenantId: null,
+      type: 'PASSWORD_HASH_MIGRATED',
+      metadata: { userId, from: 'pbkdf2', to: 'bcrypt' },
+    });
+  }
+
+  return isValid;
+}
+
+// ============================================
+// GENERAL HELPERS
 // ============================================
 
 /**
@@ -291,27 +561,24 @@ function extractNameFromEmail(email: string): string {
     .join(' ');
 }
 
-/**
- * Hash a password using bcrypt-compatible approach.
- * In production, use bcrypt or argon2.
- */
-async function hashPassword(password: string): Promise<string> {
-  // This is a placeholder - in production use bcrypt
-  const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto
-    .pbkdf2Sync(password, salt, 100000, 64, 'sha512')
-    .toString('hex');
-  return `${salt}:${hash}`;
-}
-
 export default {
+  // Core functions
   getOrCreateUserForEmail,
   getUserById,
   getUserByEmail,
   updateUser,
   recordUserLogin,
   deleteUser,
+  // Tenant membership
   getUserTenants,
   userBelongsToTenant,
   getUserTenantRole,
+  // P0.1: Tenant-scoped user access
+  listUsersForTenant,
+  getUserForTenant,
+  verifyUserInTenant,
+  // P0.4: Password helpers (bcrypt)
+  hashPassword,
+  verifyPassword,
+  verifyPasswordWithMigration,
 };

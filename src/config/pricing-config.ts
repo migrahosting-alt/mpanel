@@ -620,3 +620,96 @@ export function getPlanPrice(plan: Plan, cycle: BillingCycle): number {
 export function getAddonPrice(addon: Addon, cycle: BillingCycle): number {
   return addon.price[cycle];
 }
+
+/**
+ * Calculate order totals with plan, addons, and coupon
+ */
+export interface CalculateTotalsInput {
+  planId: string;
+  cycle: BillingCycle;
+  addonIds?: string[];
+  couponCode?: string;
+}
+
+export interface CalculateTotalsResult {
+  subtotal: number;
+  discount: number;
+  total: number;
+  planPrice: number;
+  addonsPrice: number;
+  coupon?: Coupon;
+}
+
+export function calculateTotals(input: CalculateTotalsInput): CalculateTotalsResult {
+  const { planId, cycle, addonIds = [], couponCode } = input;
+
+  // Get plan
+  const plan = getPlanById(planId);
+  if (!plan) {
+    throw new Error(`Plan not found: ${planId}`);
+  }
+
+  // Calculate plan price
+  const planPrice = getPlanPrice(plan, cycle);
+
+  // Calculate addons price
+  let addonsPrice = 0;
+  for (const addonId of addonIds) {
+    const addon = getAddonById(addonId);
+    if (!addon) {
+      throw new Error(`Addon not found: ${addonId}`);
+    }
+    if (!addon.appliesTo.includes(plan.productType)) {
+      throw new Error(`Addon ${addonId} does not apply to ${plan.productType}`);
+    }
+    addonsPrice += getAddonPrice(addon, cycle);
+  }
+
+  // Calculate subtotal
+  const subtotal = planPrice + addonsPrice;
+
+  // Apply coupon if provided
+  let discount = 0;
+  let coupon: Coupon | undefined;
+
+  if (couponCode) {
+    coupon = getCouponByCode(couponCode);
+    if (!coupon) {
+      throw new Error(`Invalid coupon code: ${couponCode}`);
+    }
+
+    if (!isCouponValid(coupon)) {
+      throw new Error(`Coupon has expired: ${couponCode}`);
+    }
+
+    // Check if coupon applies to this product
+    if (coupon.appliesToProducts && !coupon.appliesToProducts.includes(plan.productType)) {
+      throw new Error(`Coupon does not apply to ${plan.productType}`);
+    }
+
+    // Check minimum subtotal
+    if (coupon.minSubtotal && subtotal < coupon.minSubtotal) {
+      throw new Error(`Minimum order amount is $${coupon.minSubtotal} for this coupon`);
+    }
+
+    // Calculate discount
+    if (coupon.type === 'percent') {
+      discount = (subtotal * coupon.value) / 100;
+    } else if (coupon.type === 'flat') {
+      discount = Math.min(coupon.value, subtotal);
+    } else if (coupon.type === 'free-first-month') {
+      discount = subtotal;
+    }
+  }
+
+  const total = Math.max(0, subtotal - discount);
+
+  return {
+    subtotal,
+    discount,
+    total,
+    planPrice,
+    addonsPrice,
+    coupon,
+  };
+}

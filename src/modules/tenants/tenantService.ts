@@ -74,15 +74,15 @@ export async function getOrCreateTenantForUser(user: User): Promise<Tenant> {
   // Create new tenant
   const tenantName = user.name || extractCompanyName(user.email);
   const slug = generateSlug(tenantName);
+  const uniqueSlug = await ensureUniqueSlug(slug);
 
   const tenant = await prisma.tenant.create({
     data: {
       name: tenantName,
-      slug: await ensureUniqueSlug(slug),
+      slug: uniqueSlug,
+      domain: uniqueSlug,  // domain is synced with slug
       billingEmail: user.email,
       status: 'ACTIVE',
-      createdAt: new Date(),
-      updatedAt: new Date(),
     },
   });
 
@@ -153,16 +153,16 @@ export async function createTenant(
   actorUserId: string
 ): Promise<Tenant> {
   const slug = generateSlug(input.name);
+  const uniqueSlug = await ensureUniqueSlug(slug);
 
   const tenant = await prisma.tenant.create({
     data: {
       name: input.name,
-      slug: await ensureUniqueSlug(slug),
+      slug: uniqueSlug,
+      domain: uniqueSlug,  // domain is synced with slug
       billingEmail: input.billingEmail ?? null,
       address: input.address ?? null,
       status: input.status ?? 'ACTIVE',
-      createdAt: new Date(),
-      updatedAt: new Date(),
     },
   });
 

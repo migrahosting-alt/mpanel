@@ -228,6 +228,16 @@ app.use('/api/worker', workerRouter);
 // CloudPods internal API routes
 app.use('/api/internal/cloudpods', cloudPodsRouter);
 
+// TypeScript module routes (new architecture)
+// These are mounted under /api/v1 for versioning
+try {
+  const tsRouterModule = await import('./routes/typescript-loader.js');
+  app.use('/api/v1', tsRouterModule.default);
+  console.log('✓ TypeScript module routes loaded at /api/v1');
+} catch (error) {
+  console.warn('TypeScript routes not available:', error.message);
+}
+
 // API routes
 app.use('/api', routes);
 

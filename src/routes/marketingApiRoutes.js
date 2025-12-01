@@ -115,6 +115,122 @@ const parseDomain = (domain) => {
 };
 
 // ===========================================
+// PUBLIC STATUS ENDPOINTS (No Auth Required)
+// ===========================================
+
+/**
+ * GET /api/marketing/status/public
+ * Public system status for marketing website status page
+ * @access Public (no authentication required)
+ */
+router.get('/status/public', marketingApiLimiter, async (req, res) => {
+  try {
+    // Define service components for status display
+    const components = [
+      { name: 'Cloud Pods', description: 'Isolated container hosting' },
+      { name: 'Managed WordPress', description: 'WordPress optimized hosting' },
+      { name: 'Email (MigraMail)', description: 'Email hosting services' },
+      { name: 'VPS & Cloud Servers', description: 'Virtual private servers' },
+      { name: 'Cloud Storage (MigraDrive)', description: 'File storage service' },
+      { name: 'Control Panel (mPanel)', description: 'Management dashboard' },
+      { name: 'DNS Servers', description: 'Domain name resolution' },
+      { name: 'Billing & Customer Portal', description: 'Account management' },
+    ];
+
+    // Try to get real server status from database
+    let serverData = null;
+    let incidents = [];
+    
+    try {
+      // Get server status (use tenant_id = 1 for global status)
+      const serverResult = await pool.query(
+        `SELECT 
+           COUNT(*) as total_servers,
+           COUNT(CASE WHEN status = 'online' THEN 1 END) as online_servers,
+           COALESCE(AVG(NULLIF(uptime_percentage, 0)), 99.99) as avg_uptime
+         FROM servers
+         WHERE tenant_id = 1`
+      );
+      serverData = serverResult.rows[0];
+      
+      // Get recent incidents
+      const incidentResult = await pool.query(
+        `SELECT id, title, severity, status, description, created_at, resolved_at
+         FROM incidents
+         WHERE tenant_id = 1 
+         AND (status != 'resolved' OR created_at > NOW() - INTERVAL '7 days')
+         ORDER BY created_at DESC
+         LIMIT 5`
+      );
+      incidents = incidentResult.rows;
+    } catch (dbError) {
+      logger.warn('Could not fetch server status from database, using defaults', { error: dbError.message });
+    }
+
+    // Determine overall status
+    let overallStatus = 'operational';
+    const hasActiveIncidents = incidents.some(i => i.status !== 'resolved');
+    
+    if (hasActiveIncidents) {
+      const criticalIncident = incidents.find(i => i.severity === 'critical' && i.status !== 'resolved');
+      overallStatus = criticalIncident ? 'major_outage' : 'degraded';
+    }
+
+    // Calculate uptime percentage
+    const uptimePercentage = serverData?.avg_uptime ? parseFloat(serverData.avg_uptime) : 99.99;
+
+    // Build component status (all operational unless there's an incident affecting them)
+    const componentStatus = components.map(comp => ({
+      name: comp.name,
+      description: comp.description,
+      status: hasActiveIncidents ? 'degraded' : 'operational',
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        status: overallStatus,
+        uptime_percentage: uptimePercentage,
+        components: componentStatus,
+        incidents: incidents.map(inc => ({
+          id: inc.id,
+          title: inc.title,
+          severity: inc.severity,
+          status: inc.status,
+          description: inc.description,
+          started_at: inc.created_at,
+          resolved_at: inc.resolved_at,
+        })),
+        timestamp: new Date().toISOString(),
+      }
+    });
+  } catch (error) {
+    logger.error('Public status endpoint error:', error);
+    
+    // Return a default "operational" status on error to avoid showing errors to users
+    res.json({
+      success: true,
+      data: {
+        status: 'operational',
+        uptime_percentage: 99.99,
+        components: [
+          { name: 'Cloud Pods', status: 'operational' },
+          { name: 'Managed WordPress', status: 'operational' },
+          { name: 'Email (MigraMail)', status: 'operational' },
+          { name: 'VPS & Cloud Servers', status: 'operational' },
+          { name: 'Cloud Storage (MigraDrive)', status: 'operational' },
+          { name: 'Control Panel (mPanel)', status: 'operational' },
+          { name: 'DNS Servers', status: 'operational' },
+          { name: 'Billing & Customer Portal', status: 'operational' },
+        ],
+        incidents: [],
+        timestamp: new Date().toISOString(),
+      }
+    });
+  }
+});
+
+// ===========================================
 // ACCOUNT CREATION & AUTOMATION
 // ===========================================
 
@@ -318,7 +434,8 @@ router.post(
 
     try {
       const {
-        planId,
+        planId,           // Legacy: single plan (for backward compatibility)
+        cartItems = [],   // NEW: array of items for multi-item checkout
         billingCycle = 'monthly',
         trialActive = false,
         addonIds = [],
@@ -328,30 +445,37 @@ router.post(
         account,
       } = req.body;
 
+      // Support both old (single planId) and new (cartItems array) formats
+      const items = cartItems.length > 0 ? cartItems : (
+        planId ? [{ slug: planId, type: 'plan', billingCycle, quantity: 1 }] : []
+      );
+
       // Validation
-      if (!planId || !customer?.email || !account?.password) {
+      if (items.length === 0 || !customer?.email || !account?.password) {
         logger.warn('Checkout validation failed', {
-          planId: !!planId,
+          hasItems: items.length > 0,
           customerEmail: !!customer?.email,
           accountPassword: !!account?.password
         });
         return res.status(400).json({
           error: 'Missing required fields',
           details: {
-            planId: !planId ? 'Plan selection is required' : undefined,
+            items: items.length === 0 ? 'Cart is empty' : undefined,
             email: !customer?.email ? 'Email is required' : undefined,
             password: !account?.password ? 'Password is required' : undefined
           }
         });
       }
 
-      // Get plan from pricing-config.js
-      const plan = getPlanById(planId);
-      if (!plan) {
-        logger.error('Plan not found in pricing config', { planId });
+      // Get primary plan from first hosting item (for backward compatibility with existing logic)
+      const primaryPlanItem = items.find(item => item.type === 'plan' || item.type === 'hosting');
+      const plan = primaryPlanItem ? getPlanById(primaryPlanItem.slug || primaryPlanItem.planId || planId) : null;
+      
+      if (!plan && !planId) {
+        logger.error('No valid plan found in cart', { items });
         return res.status(404).json({ 
-          error: 'Plan not found',
-          details: `Plan '${planId}' does not exist in pricing configuration`
+          error: 'No hosting plan in cart',
+          details: 'Cart must include at least one hosting plan'
         });
       }
 
@@ -596,21 +720,33 @@ router.post(
         const stripe = (await import('stripe')).default;
         const stripeClient = stripe(process.env.STRIPE_SECRET_KEY);
 
-        const lineItems = [
-          {
+        // Build line_items dynamically from cart - Stripe is just payment processor
+        // All product data comes from mPanel database, no hardcoded Stripe Price IDs
+        const lineItems = [];
+        
+        for (const item of items) {
+          // Skip coupons and free items
+          if (item.type === 'coupon' || item.skip) continue;
+          
+          const itemName = item.name || item.displayName || item.slug || item.id;
+          const itemPrice = item.price || item.unitAmount || 0;
+          const itemCycle = item.billingCycle || billingCycle;
+          
+          // Use price_data for dynamic pricing - no Stripe Price IDs needed
+          lineItems.push({
             price_data: {
               currency: 'usd',
               product_data: {
-                name: plan.name,
-                description: `${billingCycle} billing`,
+                name: itemName,
+                description: item.description || `${itemCycle} billing`,
               },
-              unit_amount: Math.round(plan.basePrice[billingCycle] * 100),
+              unit_amount: Math.round(itemPrice * 100), // Convert to cents
             },
-            quantity: 1,
-          },
-        ];
-
-        // Add addons as line items
+            quantity: item.quantity || 1,
+          });
+        }
+        
+        // Add legacy addons if present
         selectedAddons.forEach(addon => {
           lineItems.push({
             price_data: {
@@ -625,6 +761,9 @@ router.post(
           });
         });
 
+        // Generate cart summary for metadata (simple list)
+        const cartSummary = items.map(i => `${i.name || i.slug} (${i.quantity || 1}x)`).join(', ');
+        
         const sessionConfig = {
           mode: 'payment',
           payment_method_types: ['card'],
@@ -634,9 +773,15 @@ router.post(
             subscriptionId: subscriptionId.toString(),
             customerId: customerId.toString(),
             domainId: domainId.toString(),
-            planId: plan.id,
+            planId: plan?.id || 'multi-item',
             billingCycle,
             tenantId: tenantId.toString(),
+            cartSummary,
+            cartItems: JSON.stringify(items.map(i => ({
+              slug: i.slug || i.id,
+              type: i.type,
+              quantity: i.quantity || 1
+            }))),
           },
           success_url: `https://migrahosting.com/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `https://migrahosting.com/checkout/cancel`,

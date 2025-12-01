@@ -18,16 +18,34 @@ export type AuditEventType =
   | 'USER_UPDATED'
   | 'USER_DELETED'
   | 'USER_LOGIN'
+  | 'USER_LOGIN_FAILED'
   | 'USER_LOGOUT'
   | 'USER_PASSWORD_CHANGED'
   | 'USER_2FA_ENABLED'
   | 'USER_2FA_DISABLED'
+  // Auth events
+  | 'ACCOUNT_DISABLED_LOGIN_ATTEMPT'
+  | 'TENANT_SWITCHED'
+  | 'TOKEN_REFRESHED'
   // Tenant events
   | 'TENANT_CREATED'
   | 'TENANT_UPDATED'
   | 'TENANT_SUSPENDED'
   | 'TENANT_REACTIVATED'
   | 'TENANT_DELETED'
+  // Product events
+  | 'PRODUCT_CREATED'
+  | 'PRODUCT_UPDATED'
+  | 'PRODUCT_DELETED'
+  | 'PRICE_CREATED'
+  | 'PRICE_UPDATED'
+  | 'PRICE_DELETED'
+  // Order events
+  | 'ORDER_CREATED'
+  | 'ORDER_PAID'
+  | 'ORDER_FAILED'
+  | 'ORDER_CANCELLED'
+  | 'ORDER_REFUNDED'
   // Subscription events
   | 'SUBSCRIPTION_CREATED'
   | 'SUBSCRIPTION_UPDATED'
@@ -105,6 +123,12 @@ export interface AuditEventInput {
  * Write an audit event to the database.
  * This is the central function for all audit logging.
  * 
+ * SCHEMA ALIGNMENT (from prisma/schema.prisma AuditLog model):
+ * - id, tenantId, userId (not actorUserId), action (not type)
+ * - resourceType, resourceId, ipAddress, userAgent, details (not metadata)
+ * - createdAt
+ * - No severity or requestId fields
+ * 
  * @example
  * await writeAuditEvent({
  *   actorUserId: user.id,
@@ -124,17 +148,37 @@ export async function writeAuditEvent(input: AuditEventInput): Promise<void> {
     severity = 'info',
   } = input;
 
+  // tenantId is required by the schema - skip if not provided
+  if (!tenantId) {
+    logger.debug('Skipping audit event - no tenantId', { type, actorUserId });
+    return;
+  }
+
   try {
-    await prisma.auditEvent.create({
+    // Extract resource info from metadata if available
+    const resourceType = (metadata.resourceType as string) ?? 
+                         (metadata.cloudPodId ? 'CloudPod' : 
+                          metadata.subscriptionId ? 'Subscription' : 
+                          metadata.domainId ? 'Domain' : null);
+    const resourceId = (metadata.resourceId as string) ?? 
+                       (metadata.cloudPodId as string) ?? 
+                       (metadata.subscriptionId as string) ?? 
+                       (metadata.domainId as string) ?? null;
+
+    await prisma.auditLog.create({
       data: {
-        actorUserId,
         tenantId,
-        type,
-        metadata: metadata as Record<string, unknown>,
+        userId: actorUserId,
+        action: type,
+        resourceType,
+        resourceId,
         ipAddress: ipAddress ?? null,
-        requestId: requestId ?? null,
-        severity,
-        createdAt: new Date(),
+        userAgent: null, // Could be extracted from request
+        details: {
+          ...metadata,
+          requestId,
+          severity,
+        },
       },
     });
 
@@ -217,13 +261,14 @@ export interface GetAuditEventsOptions {
 
 /**
  * Get audit events with filtering and pagination.
+ * Uses 'action' field (not 'type') and 'details' JSON for additional data.
  */
 export async function getAuditEvents(options: GetAuditEventsOptions = {}) {
   const {
     tenantId,
     actorUserId,
-    type,
-    severity,
+    type, // Maps to 'action' field in schema
+    severity, // Stored in details JSON
     startDate,
     endDate,
     page = 1,
@@ -233,9 +278,9 @@ export async function getAuditEvents(options: GetAuditEventsOptions = {}) {
   const where: Record<string, unknown> = {};
 
   if (tenantId) where.tenantId = tenantId;
-  if (actorUserId) where.actorUserId = actorUserId;
-  if (type) where.type = type;
-  if (severity) where.severity = severity;
+  if (actorUserId) where.userId = actorUserId; // Schema uses 'userId' not 'actorUserId'
+  if (type) where.action = type; // Schema uses 'action' not 'type'
+  // severity is in details JSON - can't filter easily in Prisma
   if (startDate || endDate) {
     where.createdAt = {};
     if (startDate) (where.createdAt as Record<string, Date>).gte = startDate;
@@ -243,13 +288,13 @@ export async function getAuditEvents(options: GetAuditEventsOptions = {}) {
   }
 
   const [items, total] = await Promise.all([
-    prisma.auditEvent.findMany({
+    prisma.auditLog.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
-    prisma.auditEvent.count({ where }),
+    prisma.auditLog.count({ where }),
   ]);
 
   return {

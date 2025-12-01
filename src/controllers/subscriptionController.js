@@ -43,6 +43,70 @@ export const getSubscription = async (req, res) => {
   }
 };
 
+/**
+ * Update subscription details
+ * PATCH /api/subscriptions/:id
+ * Body: { status, price, billingCycle, nextBillingDate, autoRenew }
+ */
+export const updateSubscription = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, price, billingCycle, nextBillingDate, autoRenew } = req.body;
+    
+    // Build update query dynamically based on provided fields
+    const updates = [];
+    const values = [];
+    let paramCount = 1;
+    
+    if (status !== undefined) {
+      updates.push(`status = $${paramCount++}`);
+      values.push(status);
+    }
+    if (price !== undefined) {
+      updates.push(`price = $${paramCount++}`);
+      values.push(price);
+    }
+    if (billingCycle !== undefined) {
+      updates.push(`billing_cycle = $${paramCount++}`);
+      values.push(billingCycle);
+    }
+    if (nextBillingDate !== undefined) {
+      updates.push(`next_billing_date = $${paramCount++}`);
+      values.push(nextBillingDate);
+    }
+    if (autoRenew !== undefined) {
+      updates.push(`auto_renew = $${paramCount++}`);
+      values.push(autoRenew);
+    }
+    
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+    
+    updates.push(`updated_at = NOW()`);
+    values.push(id);
+    
+    const query = `
+      UPDATE subscriptions 
+      SET ${updates.join(', ')}
+      WHERE id = $${paramCount}
+      RETURNING *
+    `;
+    
+    const result = await pool.query(query, values);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Subscription not found' });
+    }
+    
+    logger.info(`Subscription updated: ${id}`, { userId: req.user.id, updates: req.body });
+    res.json(result.rows[0]);
+  } catch (error) {
+    logger.error('Error updating subscription:', error);
+    res.status(500).json({ error: 'Failed to update subscription' });
+  }
+};
+
 export const cancelSubscription = async (req, res) => {
   try {
     const subscription = await Subscription.cancel(req.params.id);

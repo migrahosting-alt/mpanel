@@ -3,7 +3,25 @@
  * This project follows the architecture defined in docs/mpanel-modules-spec.md.
  * SSL Certificate Worker - Issues SSL certificates via Let's Encrypt.
  * 
- * Uses Caddy or certbot for certificate issuance.
+ * P0.3 FIX (Enterprise Hardening):
+ * - ALL user-derived inputs are validated before shell commands
+ * - Uses runSshCommand with argument arrays, NOT string interpolation
+ * - Audit logging for rejected inputs
+ * 
+ * SCHEMA ALIGNMENT (from prisma/schema.prisma SslCertificate model):
+ * - id, tenantId, domainId (links to Domain, not CloudPod)
+ * - commonName (the domain name)
+ * - issuer, validFrom, validTo (not expiresAt)
+ * - autoRenew, status, certPath, keyPath, chainPath
+ * 
+ * CloudPod model:
+ * - Has 'ip' field (not 'ipv4')
+ * - No 'server' relation - server is selected at provisioning time
+ * - Has 'hostname' for the container hostname
+ * 
+ * SSL for CloudPods:
+ * - Domain is looked up via domainId
+ * - IP comes from CloudPod.ip or needs to be passed in job payload
  */
 
 import { prisma } from '../../../config/database.js';
@@ -11,19 +29,37 @@ import logger from '../../../config/logger.js';
 import { writeAuditEvent } from '../../security/auditService.js';
 import { getServerSshCommand } from '../serverSelectionService.js';
 import type { IssueSslJobPayload } from '../queue.js';
+import {
+  validateDomainName,
+  validateVmid,
+  runSshCommand,
+} from './inputValidation.js';
 
 // ============================================
-// TYPES
+// TYPES - Schema-aligned
 // ============================================
 
-interface SslCertificate {
+interface SslCertificateRecord {
   id: string;
-  cloudPodId: string;
-  domain: string;
-  issuer: string;
+  tenantId: string | null;
+  domainId: string;
+  commonName: string;
+  issuer: string | null;
+  validFrom: Date;
+  validTo: Date;
+  autoRenew: boolean;
   status: string;
-  expiresAt: Date | null;
+  certPath: string | null;
+  keyPath: string | null;
+  chainPath: string | null;
 }
+
+// ============================================
+// CONFIGURATION
+// ============================================
+
+// SSH settings from environment
+const PROXMOX_HOST = process.env.PROXMOX_HOST ?? 'proxmox.local';
 
 // ============================================
 // MAIN WORKER
@@ -33,10 +69,13 @@ interface SslCertificate {
  * Process an ISSUE_SSL job.
  * 
  * Flow:
- * 1. Validate domain ownership (DNS pointing to our IP)
- * 2. Request certificate from Let's Encrypt
- * 3. Deploy certificate to container
- * 4. Update database record
+ * 1. Get CloudPod and Domain details
+ * 2. Validate domain ownership (DNS pointing to CloudPod IP)
+ * 3. Request certificate from Let's Encrypt
+ * 4. Deploy certificate to container
+ * 5. Update database record
+ * 
+ * IDEMPOTENT: Checks if valid certificate already exists.
  */
 export async function processIssueSslJob(
   job: { id: string; data: IssueSslJobPayload }
@@ -55,10 +94,13 @@ export async function processIssueSslJob(
     // 1) Get CloudPod details
     const cloudPod = await prisma.cloudPod.findUnique({
       where: { id: cloudPodId },
-      include: {
-        server: {
-          select: { hostname: true, ipv4: true },
-        },
+      select: {
+        id: true,
+        tenantId: true,
+        vmid: true,
+        hostname: true,
+        ip: true,
+        status: true,
       },
     });
 
@@ -66,75 +108,100 @@ export async function processIssueSslJob(
       throw new Error(`CloudPod not found: ${cloudPodId}`);
     }
 
-    if (!cloudPod.server) {
-      throw new Error(`CloudPod ${cloudPodId} has no associated server`);
+    if (!cloudPod.ip) {
+      throw new Error(`CloudPod ${cloudPodId} has no IP address assigned`);
     }
 
-    // 2) Check if certificate already exists and is valid
+    // 2) Get or create Domain record
+    let domainRecord = await prisma.domain.findFirst({
+      where: {
+        name: domain,
+        tenantId,
+      },
+    });
+
+    if (!domainRecord) {
+      // Create domain record if it doesn't exist
+      domainRecord = await prisma.domain.create({
+        data: {
+          tenantId,
+          name: domain,
+          status: 'active',
+          autoDns: true,
+          autoMail: false,
+        },
+      });
+      logger.info('Created domain record', { domainId: domainRecord.id, domain });
+    }
+
+    // 3) Check if valid certificate already exists (idempotency)
+    const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     const existingCert = await prisma.sslCertificate.findFirst({
       where: {
-        cloudPodId,
-        domain,
-        status: 'ACTIVE',
-        expiresAt: { gt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) }, // 7 days buffer
+        domainId: domainRecord.id,
+        commonName: domain,
+        status: 'active',
+        validTo: { gt: sevenDaysFromNow }, // 7 days buffer
       },
     });
 
     if (existingCert) {
-      logger.info('Valid SSL certificate already exists', {
+      logger.info('Valid SSL certificate already exists (idempotent skip)', {
         jobId,
         domain,
         certificateId: existingCert.id,
-        expiresAt: existingCert.expiresAt,
+        validTo: existingCert.validTo,
       });
       return;
     }
 
-    // 3) Validate DNS is pointing to correct IP
-    const dnsValid = await validateDnsForSsl(domain, cloudPod.ipv4 ?? cloudPod.server.ipv4);
+    // 4) Validate DNS is pointing to correct IP
+    const dnsValid = await validateDnsForSsl(domain, cloudPod.ip);
     
     if (!dnsValid) {
       logger.warn('DNS validation failed for SSL', {
         jobId,
         domain,
-        expectedIp: cloudPod.ipv4 ?? cloudPod.server.ipv4,
+        expectedIp: cloudPod.ip,
       });
       
-      // Don't throw - DNS might propagate later
-      // Mark as pending and let retry handle it
+      // Mark as pending_dns and throw to trigger retry
       await createOrUpdateCertRecord({
-        cloudPodId,
-        domain,
+        domainId: domainRecord.id,
+        commonName: domain,
         tenantId,
-        status: 'PENDING_DNS',
+        status: 'pending_dns',
       });
       
       throw new Error(`DNS not pointing to expected IP for ${domain}`);
     }
 
-    // 4) Request certificate
-    const sshCmd = await getServerSshCommand(cloudPod.server.hostname);
+    // 5) Request certificate via SSH to Proxmox/container host
+    const sshCmd = await getServerSshCommand(PROXMOX_HOST);
     
     await issueCertificateViaCaddy({
       sshCmd,
       domain,
       vmid: cloudPod.vmid,
+      tenantId,
     });
 
-    // 5) Update certificate record
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 90); // Let's Encrypt certs valid for 90 days
+    // 6) Update certificate record
+    const validFrom = new Date();
+    const validTo = new Date();
+    validTo.setDate(validTo.getDate() + 90); // Let's Encrypt certs valid for 90 days
 
     await createOrUpdateCertRecord({
-      cloudPodId,
-      domain,
+      domainId: domainRecord.id,
+      commonName: domain,
       tenantId,
-      status: 'ACTIVE',
+      status: 'active',
       issuer: "Let's Encrypt",
-      expiresAt,
+      validFrom,
+      validTo,
     });
 
-    // 6) Audit success
+    // 7) Audit success
     await writeAuditEvent({
       actorUserId: null,
       tenantId,
@@ -143,7 +210,7 @@ export async function processIssueSslJob(
         jobId,
         cloudPodId,
         domain,
-        expiresAt,
+        validTo,
       },
     });
 
@@ -151,7 +218,7 @@ export async function processIssueSslJob(
       jobId,
       domain,
       cloudPodId,
-      expiresAt,
+      validTo,
     });
   } catch (error) {
     logger.error('SSL certificate issuance failed', {
@@ -199,66 +266,101 @@ async function validateDnsForSsl(domain: string, expectedIp: string): Promise<bo
 
 /**
  * Issue certificate using Caddy's automatic HTTPS.
+ * P0.3 FIX: Uses runSshCommand with validated inputs.
  */
 async function issueCertificateViaCaddy(params: {
   sshCmd: string;
   domain: string;
   vmid: number;
+  tenantId: string;
 }): Promise<void> {
-  const { sshCmd, domain, vmid } = params;
-  const { execSync } = await import('child_process');
+  const { sshCmd, domain, vmid, tenantId } = params;
 
-  // Caddy automatically obtains certificates when you add a site
-  // This updates the Caddyfile and reloads
-  const caddyCommand = `
-    cat >> /etc/caddy/sites/${vmid}.conf << 'EOF'
-${domain} {
-    reverse_proxy localhost:${8000 + vmid}
-    tls {
-        on_demand
-    }
-}
-EOF
-    caddy reload --config /etc/caddy/Caddyfile
-  `.trim();
-
-  try {
-    execSync(`${sshCmd} '${caddyCommand}'`, {
-      timeout: 180_000, // 3 minutes for cert issuance
-      encoding: 'utf-8',
+  // P0.3: Validate inputs
+  const domainValidation = validateDomainName(domain);
+  if (!domainValidation.valid) {
+    await writeAuditEvent({
+      actorUserId: null,
+      tenantId,
+      type: 'CLOUDPOD_PROVISIONING_INPUT_REJECTED',
+      severity: 'error',
+      metadata: { field: 'domain', error: domainValidation.error },
     });
+    throw new Error(`Invalid domain: ${domainValidation.error}`);
+  }
+
+  const vmidValidation = validateVmid(vmid);
+  if (!vmidValidation.valid) {
+    throw new Error(`Invalid VMID: ${vmidValidation.error}`);
+  }
+
+  const proxmoxHost = process.env.PROXMOX_HOST ?? 'proxmox.local';
+  const tailnetDomain = process.env.TAILNET_DOMAIN ?? 'tailnet.ts.net';
+  const targetHost = proxmoxHost.includes('.') ? proxmoxHost : `${proxmoxHost}.${tailnetDomain}`;
+  const port = 8000 + vmid;
+
+  // P0.3 FIX: Use a script or API instead of inline shell commands
+  // Create Caddy config via a controlled script
+  try {
+    const result = await runSshCommand(
+      targetHost,
+      '/opt/migra-scripts/configure-caddy-ssl.sh',
+      [domainValidation.sanitized!, vmidValidation.sanitized!, String(port)],
+      { timeout: 180_000, tenantId }
+    );
+
+    if (result.exitCode !== 0) {
+      throw new Error(`Caddy SSL configuration failed: ${result.stderr}`);
+    }
   } catch (error) {
     // Try certbot as fallback
-    await issueCertificateViaCertbot({ sshCmd, domain });
+    await issueCertificateViaCertbot({ sshCmd, domain: domainValidation.sanitized!, tenantId });
   }
 }
 
 /**
  * Issue certificate using certbot (fallback).
+ * P0.3 FIX: Uses runSshCommand with validated inputs.
  */
 async function issueCertificateViaCertbot(params: {
   sshCmd: string;
   domain: string;
+  tenantId: string;
 }): Promise<void> {
-  const { sshCmd, domain } = params;
-  const { execSync } = await import('child_process');
+  const { sshCmd, domain, tenantId } = params;
 
-  const certbotCommand = `
-    certbot certonly \\
-      --webroot \\
-      --webroot-path /var/www/html \\
-      --domain ${domain} \\
-      --non-interactive \\
-      --agree-tos \\
-      --email ssl@migra.cloud \\
-      --quiet
-  `.trim();
+  // P0.3: Validate domain
+  const domainValidation = validateDomainName(domain);
+  if (!domainValidation.valid) {
+    throw new Error(`Invalid domain: ${domainValidation.error}`);
+  }
 
+  const proxmoxHost = process.env.PROXMOX_HOST ?? 'proxmox.local';
+  const tailnetDomain = process.env.TAILNET_DOMAIN ?? 'tailnet.ts.net';
+  const targetHost = proxmoxHost.includes('.') ? proxmoxHost : `${proxmoxHost}.${tailnetDomain}`;
+  const sslEmail = process.env.SSL_ADMIN_EMAIL ?? 'ssl@migra.cloud';
+
+  // P0.3 FIX: Use argument array instead of string interpolation
   try {
-    execSync(`${sshCmd} '${certbotCommand}'`, {
-      timeout: 180_000,
-      encoding: 'utf-8',
-    });
+    const result = await runSshCommand(
+      targetHost,
+      'certbot',
+      [
+        'certonly',
+        '--webroot',
+        '--webroot-path', '/var/www/html',
+        '--domain', domainValidation.sanitized!,
+        '--non-interactive',
+        '--agree-tos',
+        '--email', sslEmail,
+        '--quiet',
+      ],
+      { timeout: 180_000, tenantId }
+    );
+
+    if (result.exitCode !== 0) {
+      throw new Error(`Certificate issuance failed: ${result.stderr}`);
+    }
   } catch (error) {
     throw new Error(`Certificate issuance failed for ${domain}: ${error instanceof Error ? error.message : 'Unknown'}`);
   }
@@ -266,19 +368,24 @@ async function issueCertificateViaCertbot(params: {
 
 /**
  * Create or update SSL certificate record.
+ * Schema-aligned: uses domainId, commonName, validFrom, validTo.
  */
 async function createOrUpdateCertRecord(params: {
-  cloudPodId: string;
-  domain: string;
+  domainId: string;
+  commonName: string;
   tenantId: string;
   status: string;
   issuer?: string;
-  expiresAt?: Date;
-}): Promise<SslCertificate> {
-  const { cloudPodId, domain, tenantId, status, issuer, expiresAt } = params;
+  validFrom?: Date;
+  validTo?: Date;
+}): Promise<SslCertificateRecord> {
+  const { domainId, commonName, tenantId, status, issuer, validFrom, validTo } = params;
 
   const existing = await prisma.sslCertificate.findFirst({
-    where: { cloudPodId, domain },
+    where: { 
+      domainId,
+      commonName,
+    },
   });
 
   if (existing) {
@@ -287,27 +394,26 @@ async function createOrUpdateCertRecord(params: {
       data: {
         status,
         issuer: issuer ?? existing.issuer,
-        expiresAt: expiresAt ?? existing.expiresAt,
-        updatedAt: new Date(),
+        validFrom: validFrom ?? existing.validFrom,
+        validTo: validTo ?? existing.validTo,
       },
     });
-    return updated as SslCertificate;
+    return updated;
   }
 
   const created = await prisma.sslCertificate.create({
     data: {
-      cloudPodId,
-      domain,
+      domainId,
+      commonName,
       tenantId,
       status,
       issuer: issuer ?? 'pending',
-      expiresAt,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      validFrom: validFrom ?? new Date(),
+      validTo: validTo ?? new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
     },
   });
 
-  return created as SslCertificate;
+  return created;
 }
 
 /**
@@ -315,18 +421,14 @@ async function createOrUpdateCertRecord(params: {
  * Called by a scheduled job.
  */
 export async function renewExpiringCertificates(): Promise<void> {
-  const expiringThreshold = new Date();
-  expiringThreshold.setDate(expiringThreshold.getDate() + 14); // Renew 14 days before expiry
+  const renewalThreshold = new Date();
+  renewalThreshold.setDate(renewalThreshold.getDate() + 14); // Renew 14 days before expiry
 
   const expiringCerts = await prisma.sslCertificate.findMany({
     where: {
-      status: 'ACTIVE',
-      expiresAt: { lte: expiringThreshold },
-    },
-    include: {
-      cloudPod: {
-        select: { tenantId: true },
-      },
+      status: 'active',
+      autoRenew: true,
+      validTo: { lte: renewalThreshold },
     },
   });
 
@@ -337,10 +439,41 @@ export async function renewExpiringCertificates(): Promise<void> {
   const { enqueueIssueSslJob } = await import('../queue.js');
 
   for (const cert of expiringCerts) {
+    // Look up Domain to get tenantId
+    const domain = await prisma.domain.findUnique({
+      where: { id: cert.domainId },
+    });
+
+    if (!domain) {
+      logger.warn('Domain not found for expiring certificate', {
+        certId: cert.id,
+        domainId: cert.domainId,
+      });
+      continue;
+    }
+
+    // Find CloudPod for this domain/tenant (by hostname matching or other logic)
+    // This is a simplified approach - in production you'd have proper linking
+    const cloudPod = await prisma.cloudPod.findFirst({
+      where: {
+        tenantId: domain.tenantId,
+        status: 'active',
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!cloudPod) {
+      logger.warn('No active CloudPod found for certificate renewal', {
+        certId: cert.id,
+        tenantId: domain.tenantId,
+      });
+      continue;
+    }
+
     await enqueueIssueSslJob({
-      tenantId: cert.cloudPod.tenantId,
-      cloudPodId: cert.cloudPodId,
-      domain: cert.domain,
+      tenantId: domain.tenantId,
+      cloudPodId: cloudPod.id,
+      domain: cert.commonName,
     });
   }
 }

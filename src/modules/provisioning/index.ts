@@ -2,12 +2,18 @@
  * NOTE FOR COPILOT:
  * This project follows the architecture defined in docs/mpanel-modules-spec.md.
  * Provisioning Module Index - Exports all provisioning services and workers.
+ * 
+ * NOTE: Workers are not exported here because they have complex dependencies
+ * (dns.service, etc). Import workers directly if needed for runtime.
  */
 
 export { default as queue } from './queue.js';
 export { default as serverSelectionService } from './serverSelectionService.js';
-export { default as createCloudPodWorker } from './workers/createCloudPodWorker.js';
-export { default as issueSslWorker } from './workers/issueSslWorker.js';
+
+// NOTE: Workers commented out to avoid transitive dependencies on dns.service
+// Import workers directly if needed at runtime:
+//   import { processCreateCloudPodJob } from './workers/createCloudPodWorker.js';
+//   import { processIssueSslJob } from './workers/issueSslWorker.js';
 
 // Re-export queue functions
 export {
@@ -18,20 +24,15 @@ export {
   enqueueBackupCloudPodJob,
 } from './queue.js';
 
-// Re-export worker functions
-export { processCreateCloudPodJob } from './workers/createCloudPodWorker.js';
-export { processIssueSslJob, renewExpiringCertificates } from './workers/issueSslWorker.js';
-
 // Re-export server selection functions
 export {
   selectServerForCloudPod,
   getServerSshCommand,
-  updateServerAllocation,
   getServerById,
   getAllServers,
   checkServerHealth,
   getServerResourceUsage,
-  syncServerAllocations,
+  getCloudPodUsageByTenant,
 } from './serverSelectionService.js';
 
 // Types

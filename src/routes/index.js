@@ -78,6 +78,9 @@ import marketingApiRoutes from './marketingApiRoutes.js';
 import adminCronRoutes from './adminCronRoutes.js';
 import hrRoutes from './hrRoutes.js';
 import planAccessRoutes from './planAccessRoutes.js';
+import addonRoutes from './addonRoutes.js';
+import cloudPodRoutes from './cloudPodRoutes.js';
+import adminDashboardRoutes from './adminDashboardRoutes.js';
 
 const router = express.Router();
 
@@ -238,6 +241,7 @@ router.use('/white-label', whiteLabelRoutes);
 router.use('/marketing', marketingApiRoutes);  // Marketing website integration API
 router.use('/marketing-internal', marketingRoutes);  // Internal marketing routes
 router.use('/admin/cron', adminCronRoutes);
+router.use('/admin', adminDashboardRoutes);  // Enterprise Admin Dashboard
 
 // HR & Employee Management System
 router.use('/hr', hrRoutes);
@@ -247,6 +251,12 @@ router.use('/plans', planAccessRoutes);
 
 // Service Management (SSL, Backups, Email, Migration, Domain Transfer)
 router.use('/service-management', serviceManagementRoutes);
+
+// Add-ons API (single source of truth for all add-on products)
+router.use('/addons', addonRoutes);
+
+// Cloud Pods API (isolated container hosting)
+router.use('/cloud-pods', cloudPodRoutes);
 
 export default router;
 

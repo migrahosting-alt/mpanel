@@ -10,8 +10,10 @@ const { Pool } = pg;
 // ============================================
 // DATABASE CONNECTION
 // ============================================
-const connectionString = process.env.DATABASE_URL || 
-  'postgres://mpanel_app:mpanel_Sikse7171222!@10.1.10.210:5432/mpanel';
+if (!process.env.DATABASE_URL) {
+  throw new Error('DATABASE_URL environment variable is required');
+}
+const connectionString = process.env.DATABASE_URL;
 
 // ============================================
 // LEGACY PG POOL (for backward compatibility)
