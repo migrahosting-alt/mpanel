@@ -832,3 +832,848 @@ function errorHandler(err, req, res, next) {
   });
 }
 ```
+
+---
+
+## 16. Enterprise Guardrails
+
+> **IMPORTANT:** Any new code in this repo must follow these rules.  
+> When in doubt, copy existing patterns from this file instead of inventing new ones.
+
+### 16.1 Authentication & Authorization
+
+#### Auth Source of Truth
+
+All API requests must be authenticated via:
+- JWT access tokens, or
+- Session cookies (depending on current implementation).
+
+**Copilot must never bypass the existing auth middleware.**
+
+#### RBAC Enforcement
+
+Use central helpers only (no inline permission logic):
+
+```javascript
+requirePlatformPermission(user, 'admin:*')
+requireTenantPermission(user, tenantId, 'cloudpods:manage')
+```
+
+Every handler that touches tenant data must:
+1. Resolve `tenantId` from path/params/body.
+2. Verify tenant membership & permissions.
+3. Filter DB queries by `tenantId`.
+
+#### Multi-Tenant Safety
+
+**NEVER:**
+- Query across tenants in tenant-facing endpoints.
+- Expose a record without checking its `tenantId` against the current context.
+
+**For admin/platform endpoints that do cross tenants:**
+- Require `SUPER_ADMIN` or explicit `platform:*` permissions.
+
+#### Password & 2FA
+
+**Password rules:**
+- At least 10 chars, reasonable complexity requirements.
+
+**2FA support hooks:**
+- Tables/fields for TOTP secret, recovery codes, 2FA status.
+- API stubs: `POST /api/auth/2fa/enable`, `/verify`, `/disable`.
+
+### 16.2 API Standards & Versioning
+
+#### Versioned Namespaces
+
+Expose all APIs under versioned prefixes:
+```
+/api/v1/admin/...
+/api/v1/tenant/...
+/api/v1/public/...
+```
+
+Internally, Copilot should organize controllers by module + version.
+
+#### Consistent Response Shape
+
+**Success (single resource):**
+```json
+{ "data": { ... }, "meta": { "requestId": "..." } }
+```
+
+**Success (list):**
+```json
+{
+  "data": [ ... ],
+  "meta": { "total": 123, "page": 1, "pageSize": 25, "requestId": "..." }
+}
+```
+
+**Error:**
+```json
+{
+  "error": {
+    "code": "SUBSCRIPTION_NOT_FOUND",
+    "message": "Subscription not found",
+    "details": { "subscriptionId": "..." }
+  },
+  "meta": { "requestId": "..." }
+}
+```
+
+#### Pagination, Sorting, Filtering
+
+Lists must support:
+- `?page`, `?pageSize`, `?sortBy`, `?sortDir`, `?filter[...]`
+
+**Never return unbounded lists for tenant or admin data.**
+
+#### Idempotency
+
+For webhooks and unsafe POSTs that can be retried:
+- Use idempotency keys (`externalSubscriptionId`, `idempotencyKey` header).
+- Check for existing records before creating new ones.
+
+### 16.3 Data Integrity & Deletion
+
+#### Soft Deletes
+
+Use soft deletes (`deletedAt` timestamp) for:
+- Users, Tenants, Subscriptions, CloudPods, Domains, Mailboxes.
+
+Tenant-facing APIs must exclude soft-deleted records by default.
+
+#### Referential Integrity
+
+DB must enforce FKs:
+- `tenantId` on all tenant-bound tables.
+- `subscriptionId` → `subscriptions`, `cloudPodId` → `cloudPods`, etc.
+
+#### Archival
+
+Add room for archive tables or `archivedAt` fields for:
+- Old audit logs, system events, metrics rollups.
+
+### 16.4 Observability: Logging, Metrics, Tracing
+
+#### Structured Logging
+
+Use a single logger (`logger`) everywhere with JSON/structured logs:
+
+```javascript
+logger.info('CLOUDPOD_CREATED', {
+  tenantId,
+  cloudPodId,
+  serverId,
+  requestId,
+});
+```
+
+**No `console.log` in production code.**
+
+#### Correlation / Request IDs
+
+Middleware must:
+1. Generate `requestId` for each HTTP request (or reuse if provided).
+2. Attach it to `req.context` and logs.
+3. All responses include `meta.requestId`.
+
+#### Metrics
+
+Standard metrics:
+- **HTTP:** request count, latency, error rate per route.
+- **Jobs:** queue depth, processing time, failures per job type.
+- **Infra:** server CPU/RAM/disk, DB connection utilization.
+
+Copilot should reuse existing metrics client (`prom-client` or whatever is used).
+
+#### Tracing
+
+Where tracing is available, wrap:
+- Incoming HTTP requests.
+- Outgoing calls to infra (PowerDNS, mail, DB, orchestrator).
+
+### 16.5 Background Jobs & Reliability
+
+#### Queue Rules
+
+All heavy or infra-changing operations must be jobs:
+- Provisioning, DNS updates, SSL, backups, restores, migrations.
+
+Each job type:
+- Has a clear payload interface.
+- Is idempotent.
+- Has configured attempts and exponential backoff.
+
+#### Timeouts & Circuit Breakers
+
+No external call (PowerDNS, mail, orchestrator, Stripe, etc.) should:
+- Run without a timeout.
+
+Use per-service clients with:
+- Timeout
+- Retry settings
+- Basic circuit breaker where possible
+
+#### Dead Letter Handling
+
+On repeated job failure:
+1. Move job to a dead-letter queue or mark as `FAILED`.
+2. Write an audit event `JOB_FAILED`.
+3. Expose these in "System Events" + Monitoring UI.
+
+### 16.6 Security: Data, Secrets, Network
+
+#### Secrets Management
+
+- Read secrets only from environment variables or secure config.
+- Never commit credentials, tokens, private keys.
+
+#### Tailscale / Network Boundary
+
+Any call to servers (`srv1-web`, `mail-core`, `db-core`, `dns-core`, etc.) must assume:
+- Access occurs over Tailscale or internal network.
+
+Copilot must:
+- Use hostnames from env/config.
+- Never embed IPs in code.
+
+#### Least Privilege
+
+DB users and infra tokens should be scoped to:
+- Only the operations that service/module needs.
+
+Copilot should assume there may be separate DB users per service later.
+
+#### Input Validation & Sanitization
+
+All external inputs (body, params, query):
+- Validated via a central validation library (e.g., `zod` / `yup` / `class-validator`).
+
+**NEVER:**
+- Build SQL strings via string concatenation from user inputs.
+
+### 16.7 Frontend & UX Rules
+
+#### Folder Pattern
+
+Use per-module structure:
+```
+/src/modules/<module>/api.ts
+/src/modules/<module>/hooks.ts
+/src/modules/<module>/components/...
+/src/modules/<module>/pages/...
+```
+
+#### Data Fetching
+
+Use one central API client with:
+- Base URL
+- Auth headers
+- `requestId` propagation (if supported)
+- Global error handling
+
+#### State & UI Behavior
+
+For every view that calls API:
+1. Show loading state.
+2. Show error state with actionable message.
+3. Use toasts/snackbars for successful actions: "CloudPod created", "Domain connected", etc.
+
+#### Multi-Tenant Isolation in UI
+
+- UI must not assume a single tenant.
+- Every tenant selection should clearly show which tenant is active.
+
+### 16.8 Config, Environments, and Feature Flags
+
+#### Environment Separation
+
+Environment-specific configs:
+- `development`, `staging`, `production`.
+
+Copilot must not:
+- Mix test URLs into production code.
+
+#### Configuration
+
+All important settings come from config:
+- `TAILSCALE_ORCHESTRATOR_URL`
+- `POWERDNS_API_URL`
+- `MAIL_CORE_API_URL`
+- `MINIO_ENDPOINT`
+- `BILLING_PROVIDER_PUBLIC_KEY`, etc.
+
+#### Feature Flags
+
+Use simple flags for future modules:
+- `features.k8s`, `features.cdn`, `features.marketplace`.
+
+UI and backend must respect these flags and hide/disable unsupported features.
+
+### 16.9 Testing & QA
+
+#### Unit/Integration Tests
+
+For any new non-trivial module or API, add tests for:
+- Happy path
+- Permission denied
+- Invalid input
+- Multi-tenant isolation
+
+#### Fixtures
+
+Prefer using fixtures/factories for:
+- Tenants, Users, Subscriptions, CloudPods.
+
+#### Smoke / Health Checks
+
+Maintain `/health` and `/status` endpoints that:
+- Verify DB connection
+- Queue connectivity
+- Core dependencies reachable
+
+### 16.10 Naming, Style, and Anti-Patterns
+
+#### Naming
+
+Use consistent names across backend, frontend, and DB:
+- `tenantId`, `subscriptionId`, `cloudPodId`, `serverId` – not random variants.
+- Modules must follow the same naming used in this spec.
+
+#### Style
+
+- Use existing lint/format rules (`eslint`, `prettier`).
+- No `any` unless absolutely necessary and justified.
+
+#### Anti-Patterns to Avoid
+
+| ❌ Anti-Pattern | Why It's Bad |
+|----------------|--------------|
+| Direct DB calls in React components | Breaks separation of concerns |
+| Infra scripts from frontend | Security risk, breaks architecture |
+| Mixing platform-admin and tenant logic in same handler | Multi-tenant bugs |
+| "Magic" cross-module behavior without audit + logs | Debugging nightmare |
+| `console.log` in production | Use structured logger |
+| Unbounded list queries | Performance & security |
+| SQL string concatenation | SQL injection risk |
+
+---
+
+## 17. Reference Implementation: End-to-End Flow
+
+> **Example Flow:**
+> Stripe webhook → Create/link User & Tenant → Create Subscription & CloudPod → Enqueue `CREATE_CLOUDPOD` job → Worker provisions pod + DNS + SSL → Audit events at each step
+
+Drop these into `src/modules/...` and adjust names. Copilot will clone the structure for other flows.
+
+### 17.1 Billing Webhook – New Subscription Activated
+
+**File:** `src/modules/billing/webhooks.ts`
+
+```typescript
+import { Request, Response } from 'express';
+import { getOrCreateUserForEmail } from '../users/userService';
+import { getOrCreateTenantForUser } from '../tenants/tenantService';
+import { createSubscriptionFromProviderEvent } from './subscriptionService';
+import { enqueueCreateCloudPodJob } from '../provisioning/queue';
+import { writeAuditEvent } from '../security/auditService';
+import logger from '../../config/logger';
+
+export async function handleBillingWebhook(req: Request, res: Response) {
+  try {
+    const { eventType, payload } = req.body as {
+      eventType: string;
+      payload: any;
+    };
+
+    // TODO: validate provider signature here
+    // const signature = req.headers['stripe-signature'] as string;
+
+    if (eventType !== 'subscription_activated') {
+      return res.status(200).json({ received: true });
+    }
+
+    const {
+      customerEmail,
+      planCode,
+      billingCycle,
+      externalSubscriptionId,
+      domain,
+      addOns,
+    } = payload;
+
+    // 1) User & Tenant
+    const user = await getOrCreateUserForEmail(customerEmail);
+    const tenant = await getOrCreateTenantForUser(user);
+
+    // 2) Subscription
+    const subscription = await createSubscriptionFromProviderEvent({
+      tenantId: tenant.id,
+      planCode,
+      billingCycle,
+      externalSubscriptionId,
+      addOns,
+    });
+
+    // 3) CloudPod record + job
+    const job = await enqueueCreateCloudPodJob({
+      tenantId: tenant.id,
+      subscriptionId: subscription.id,
+      requestedDomain: domain,
+      planCode,
+      addOns,
+      triggeredByUserId: user.id,
+      source: 'billing_webhook',
+    });
+
+    await writeAuditEvent({
+      actorUserId: user.id,
+      tenantId: tenant.id,
+      type: 'SUBSCRIPTION_CREATED',
+      metadata: {
+        subscriptionId: subscription.id,
+        externalSubscriptionId,
+        planCode,
+        jobId: job.id,
+        source: 'billing_webhook',
+      },
+    });
+
+    logger.info('Billing webhook processed successfully', {
+      tenantId: tenant.id,
+      subscriptionId: subscription.id,
+      jobId: job.id,
+    });
+
+    return res.status(200).json({ ok: true });
+  } catch (err: any) {
+    logger.error('Error handling billing webhook', {
+      error: err?.message,
+      stack: err?.stack,
+    });
+    return res.status(500).json({ error: 'webhook_processing_failed' });
+  }
+}
+```
+
+### 17.2 Subscription Service – Create Subscription + CloudPod Record
+
+**File:** `src/modules/billing/subscriptionService.ts`
+
+```typescript
+import db from '../../config/db';
+import { writeAuditEvent } from '../security/auditService';
+
+interface CreateSubscriptionFromProviderInput {
+  tenantId: string;
+  planCode: string;
+  billingCycle: 'monthly' | 'yearly';
+  externalSubscriptionId: string;
+  addOns?: string[];
+}
+
+export async function createSubscriptionFromProviderEvent(
+  input: CreateSubscriptionFromProviderInput
+) {
+  const { tenantId, planCode, billingCycle, externalSubscriptionId, addOns } =
+    input;
+
+  // Idempotency: avoid duplicates if webhook retries
+  const existing = await db.subscription.findFirst({
+    where: { externalSubscriptionId },
+  });
+  if (existing) {
+    return existing;
+  }
+
+  const product = await db.product.findFirst({
+    where: { code: planCode },
+  });
+
+  if (!product) {
+    throw new Error(`Unknown planCode: ${planCode}`);
+  }
+
+  const subscription = await db.subscription.create({
+    data: {
+      tenantId,
+      productId: product.id,
+      planCode,
+      billingCycle,
+      status: 'ACTIVE',
+      externalSubscriptionId,
+      addOns,
+    },
+  });
+
+  await writeAuditEvent({
+    actorUserId: null, // system
+    tenantId,
+    type: 'SUBSCRIPTION_SYNCED_FROM_PROVIDER',
+    metadata: {
+      subscriptionId: subscription.id,
+      externalSubscriptionId,
+      planCode,
+      billingCycle,
+    },
+  });
+
+  return subscription;
+}
+```
+
+### 17.3 Provisioning Queue – Enqueue CREATE_CLOUDPOD Job
+
+**File:** `src/modules/provisioning/queue.ts`
+
+```typescript
+import { queue } from '../../config/queue'; // e.g. BullMQ, BeeQueue, etc.
+
+export interface CreateCloudPodJobPayload {
+  tenantId: string;
+  subscriptionId: string;
+  planCode: string;
+  requestedDomain?: string;
+  addOns?: string[];
+  triggeredByUserId: string;
+  source: 'billing_webhook' | 'admin_panel' | 'tenant_portal';
+}
+
+export async function enqueueCreateCloudPodJob(
+  payload: CreateCloudPodJobPayload
+) {
+  const job = await queue.add('CREATE_CLOUDPOD', payload, {
+    attempts: 5,
+    backoff: { type: 'exponential', delay: 10_000 },
+    removeOnComplete: true,
+    removeOnFail: false,
+  });
+
+  return { id: job.id, name: job.name };
+}
+```
+
+### 17.4 Worker – Process CREATE_CLOUDPOD Job (Pod + DNS + SSL)
+
+**File:** `src/modules/provisioning/workers/createCloudPodWorker.ts`
+
+```typescript
+import db from '../../../config/db';
+import logger from '../../../config/logger';
+import { writeAuditEvent } from '../../security/auditService';
+import { selectBestServerForPlan } from '../serverSelectionService';
+import { applyDnsTemplateForCloudPod } from '../../dns/dnsService';
+import { enqueueIssueSslJob } from './issueSslWorker';
+import { CreateCloudPodJobPayload } from '../queue';
+
+export async function processCreateCloudPodJob(job: {
+  id: string | number;
+  data: CreateCloudPodJobPayload;
+}) {
+  const payload = job.data;
+
+  logger.info('CREATE_CLOUDPOD job started', {
+    jobId: job.id,
+    payload,
+  });
+
+  const { tenantId, subscriptionId, planCode, requestedDomain, addOns } =
+    payload;
+
+  // idempotency: check if we already created a pod for this subscription
+  const existingPod = await db.cloudPod.findFirst({
+    where: { subscriptionId },
+  });
+
+  if (existingPod) {
+    logger.info('CloudPod already exists for subscription, skipping create', {
+      jobId: job.id,
+      cloudPodId: existingPod.id,
+    });
+    return;
+  }
+
+  // 1) Choose server
+  const server = await selectBestServerForPlan({ planCode });
+  if (!server) {
+    throw new Error('No suitable server available for plan');
+  }
+
+  // 2) Create CloudPod record (DB)
+  const cloudPod = await db.cloudPod.create({
+    data: {
+      tenantId,
+      subscriptionId,
+      serverId: server.id,
+      planCode,
+      status: 'PROVISIONING',
+      primaryDomain: requestedDomain ?? null,
+      addOns,
+    },
+  });
+
+  await writeAuditEvent({
+    actorUserId: payload.triggeredByUserId ?? null,
+    tenantId,
+    type: 'CLOUDPOD_PROVISIONING_STARTED',
+    metadata: {
+      cloudPodId: cloudPod.id,
+      subscriptionId,
+      serverId: server.id,
+      planCode,
+    },
+  });
+
+  // 3) Call underlying infra (over Tailscale / internal network)
+  // NOTE: Copilot: always use env/config for hostnames, never hard-code IPs.
+  await provisionCloudPodOnServer({
+    serverHostname: server.hostname,
+    podId: cloudPod.id,
+    planCode,
+  });
+
+  // 4) DNS – only if we have a primary domain
+  if (requestedDomain) {
+    await applyDnsTemplateForCloudPod({
+      tenantId,
+      cloudPodId: cloudPod.id,
+      domain: requestedDomain,
+      server,
+    });
+
+    await writeAuditEvent({
+      actorUserId: payload.triggeredByUserId ?? null,
+      tenantId,
+      type: 'DOMAIN_DNS_TEMPLATE_APPLIED',
+      metadata: {
+        cloudPodId: cloudPod.id,
+        domain: requestedDomain,
+        serverId: server.id,
+      },
+    });
+
+    // 5) SSL job
+    await enqueueIssueSslJob({
+      tenantId,
+      cloudPodId: cloudPod.id,
+      domain: requestedDomain,
+    });
+  }
+
+  // 6) Mark pod as running
+  await db.cloudPod.update({
+    where: { id: cloudPod.id },
+    data: { status: 'RUNNING' },
+  });
+
+  await writeAuditEvent({
+    actorUserId: payload.triggeredByUserId ?? null,
+    tenantId,
+    type: 'CLOUDPOD_PROVISIONED',
+    metadata: {
+      cloudPodId: cloudPod.id,
+      subscriptionId,
+      serverId: server.id,
+      planCode,
+    },
+  });
+
+  logger.info('CREATE_CLOUDPOD job completed', {
+    jobId: job.id,
+    cloudPodId: cloudPod.id,
+  });
+}
+
+// Example stub: Copilot should flesh this out with real Ansible / SSH / API calls
+async function provisionCloudPodOnServer(input: {
+  serverHostname: string;
+  podId: string;
+  planCode: string;
+}) {
+  // Call internal orchestration API over Tailscale or local network
+  // Example: POST http://orchestrator.internal/api/pods
+  // For now just log.
+  return;
+}
+```
+
+### 17.5 DNS Service – Apply Template for CloudPod
+
+**File:** `src/modules/dns/dnsService.ts`
+
+```typescript
+import db from '../../config/db';
+import { powerDnsClient } from '../../config/powerdns';
+import logger from '../../config/logger';
+
+interface ApplyDnsTemplateInput {
+  tenantId: string;
+  cloudPodId: string;
+  domain: string;
+  server: { hostname: string; ipv4?: string | null; ipv6?: string | null };
+}
+
+export async function applyDnsTemplateForCloudPod(
+  input: ApplyDnsTemplateInput
+) {
+  const { domain, server, tenantId, cloudPodId } = input;
+
+  // Ensure domain row exists
+  let dnsDomain = await db.domain.findFirst({ where: { name: domain } });
+  if (!dnsDomain) {
+    dnsDomain = await db.domain.create({
+      data: {
+        name: domain,
+        tenantId,
+        type: 'CLOUDPOD',
+        cloudPodId,
+      },
+    });
+  }
+
+  // Build records from template
+  const records = [
+    {
+      name: domain,
+      type: 'A',
+      content: server.ipv4,
+      ttl: 300,
+    },
+    // Add AAAA, CNAME "www", etc.
+  ].filter((r) => !!r.content);
+
+  // Push to PowerDNS via API client
+  await powerDnsClient.applyZoneRecords({
+    zoneName: domain,
+    records,
+  });
+
+  logger.info('DNS template applied for CloudPod', {
+    domain,
+    tenantId,
+    cloudPodId,
+  });
+}
+```
+
+### 17.6 SSL Worker – Issue Certificate
+
+**File:** `src/modules/provisioning/workers/issueSslWorker.ts`
+
+```typescript
+import db from '../../../config/db';
+import logger from '../../../config/logger';
+import { writeAuditEvent } from '../../security/auditService';
+
+interface IssueSslJobPayload {
+  tenantId: string;
+  cloudPodId: string;
+  domain: string;
+}
+
+export async function enqueueIssueSslJob(payload: IssueSslJobPayload) {
+  const { queue } = await import('../../../config/queue');
+  const job = await queue.add('ISSUE_SSL', payload, {
+    attempts: 5,
+    backoff: { type: 'exponential', delay: 30_000 },
+    removeOnComplete: true,
+    removeOnFail: false,
+  });
+  return job;
+}
+
+export async function processIssueSslJob(job: {
+  id: string | number;
+  data: IssueSslJobPayload;
+}) {
+  const { tenantId, cloudPodId, domain } = job.data;
+
+  logger.info('ISSUE_SSL job started', { jobId: job.id, domain });
+
+  // TODO: Call ACME/LE client
+  // const cert = await acmeClient.issueCertificate(domain);
+
+  // For now just mark as "ACTIVE" in DB
+  const ssl = await db.sslCertificate.upsert({
+    where: { domain },
+    create: {
+      tenantId,
+      cloudPodId,
+      domain,
+      status: 'ACTIVE',
+    },
+    update: {
+      status: 'ACTIVE',
+    },
+  });
+
+  await writeAuditEvent({
+    actorUserId: null,
+    tenantId,
+    type: 'SSL_ISSUED',
+    metadata: {
+      cloudPodId,
+      domain,
+      sslId: ssl.id,
+    },
+  });
+
+  logger.info('ISSUE_SSL job completed', { jobId: job.id, domain });
+}
+```
+
+### 17.7 Audit Service – Central Helper
+
+**File:** `src/modules/security/auditService.ts`
+
+```typescript
+import db from '../../config/db';
+
+interface AuditEventInput {
+  actorUserId: string | null;
+  tenantId: string | null;
+  type:
+    | 'SUBSCRIPTION_CREATED'
+    | 'SUBSCRIPTION_SYNCED_FROM_PROVIDER'
+    | 'CLOUDPOD_PROVISIONING_STARTED'
+    | 'CLOUDPOD_PROVISIONED'
+    | 'DOMAIN_DNS_TEMPLATE_APPLIED'
+    | 'SSL_ISSUED'
+    | string; // extend as needed
+  metadata?: Record<string, any>;
+}
+
+export async function writeAuditEvent(input: AuditEventInput) {
+  const { actorUserId, tenantId, type, metadata } = input;
+
+  await db.auditEvent.create({
+    data: {
+      actorUserId,
+      tenantId,
+      type,
+      metadata: metadata ?? {},
+    },
+  });
+}
+```
+
+---
+
+## 18. Summary Checklist for Copilot
+
+Before submitting any code change, verify:
+
+- [ ] **RBAC:** All tenant endpoints use `requireTenantPermission()`
+- [ ] **Multi-Tenant:** All queries filtered by `tenantId`
+- [ ] **No Hardcoding:** IPs, secrets, URLs from env/config only
+- [ ] **Jobs:** Infra changes go through queue, not HTTP handlers
+- [ ] **Idempotent:** Jobs check for existing resources before creating
+- [ ] **Audit Events:** Sensitive actions emit audit events
+- [ ] **Structured Errors:** No stack traces in responses
+- [ ] **Structured Logs:** Using `logger`, not `console.log`
+- [ ] **Request ID:** Responses include `meta.requestId`
+- [ ] **Soft Deletes:** Using `deletedAt` for user-facing data
+- [ ] **Validation:** Input validated with zod/yup
+- [ ] **Tests:** Added for permission denied + happy path + wrong tenant
