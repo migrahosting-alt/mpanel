@@ -6,27 +6,36 @@ const router = express.Router();
 // Get all customers for authenticated user
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const { id: user_id, role } = req.user;
+    const { id: user_id, role, tenantId } = req.user;
     
     let query;
     let params;
     
-    if (role === 'admin') {
-      // Admins see all customers
+    if (role === 'admin' || role === 'super_admin') {
+      // Admins and super_admins see all customers
       query = `
-        SELECT c.*, u.email, u.first_name, u.last_name
+        SELECT 
+          c.*,
+          COALESCE(c.email, u.email) as email,
+          COALESCE(c.first_name, u.first_name) as first_name,
+          COALESCE(c.last_name, u.last_name) as last_name
         FROM customers c
         LEFT JOIN users u ON c.user_id = u.id
+        WHERE c.deleted_at IS NULL
         ORDER BY c.created_at DESC
       `;
       params = [];
     } else {
       // Regular users see only their customers
       query = `
-        SELECT c.*, u.email, u.first_name, u.last_name
+        SELECT 
+          c.*,
+          COALESCE(c.email, u.email) as email,
+          COALESCE(c.first_name, u.first_name) as first_name,
+          COALESCE(c.last_name, u.last_name) as last_name
         FROM customers c
         LEFT JOIN users u ON c.user_id = u.id
-        WHERE c.user_id = $1
+        WHERE c.user_id = $1 AND c.deleted_at IS NULL
         ORDER BY c.created_at DESC
       `;
       params = [user_id];
@@ -49,11 +58,27 @@ router.get('/:id', authenticateToken, async (req, res) => {
     let query;
     let params;
     
-    if (role === 'admin') {
-      query = 'SELECT c.*, u.email, u.first_name, u.last_name FROM customers c LEFT JOIN users u ON c.user_id = u.id WHERE c.id = $1';
+    if (role === 'admin' || role === 'super_admin') {
+      query = `
+        SELECT c.*, 
+          COALESCE(c.email, u.email) as email,
+          COALESCE(c.first_name, u.first_name) as first_name,
+          COALESCE(c.last_name, u.last_name) as last_name
+        FROM customers c 
+        LEFT JOIN users u ON c.user_id = u.id 
+        WHERE c.id = $1
+      `;
       params = [id];
     } else {
-      query = 'SELECT c.*, u.email, u.first_name, u.last_name FROM customers c LEFT JOIN users u ON c.user_id = u.id WHERE c.id = $1 AND c.user_id = $2';
+      query = `
+        SELECT c.*, 
+          COALESCE(c.email, u.email) as email,
+          COALESCE(c.first_name, u.first_name) as first_name,
+          COALESCE(c.last_name, u.last_name) as last_name
+        FROM customers c 
+        LEFT JOIN users u ON c.user_id = u.id 
+        WHERE c.id = $1 AND c.user_id = $2
+      `;
       params = [id, user_id];
     }
     
@@ -73,27 +98,52 @@ router.get('/:id', authenticateToken, async (req, res) => {
 // Create new customer
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { company_name, email, phone, country, city } = req.body;
-    const { tenant_id, id: user_id } = req.user;
+    const { 
+      first_name, 
+      last_name, 
+      email, 
+      company_name, 
+      phone, 
+      address, 
+      city, 
+      state, 
+      postal_code, 
+      country,
+      tax_id,
+      notes,
+      status = 'active'
+    } = req.body;
+    const { tenantId, id: user_id } = req.user;
     
-    if (!company_name || !email) {
-      return res.status(400).json({ success: false, error: 'Company name and email are required' });
+    if (!email) {
+      return res.status(400).json({ success: false, error: 'Email is required' });
     }
     
     const query = `
-      INSERT INTO customers (tenant_id, user_id, company_name, email, phone, country, city, status)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, 'active')
+      INSERT INTO customers (
+        tenant_id, user_id, first_name, last_name, email, company_name, 
+        phone, address_line1, city, state, postal_code, country, tax_id, notes, status
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
       RETURNING *
     `;
     
     const result = await pool.query(query, [
-      tenant_id,
+      tenantId,
       user_id,
-      company_name,
+      first_name || null,
+      last_name || null,
       email,
+      company_name || null,
       phone || null,
+      address || null,
+      city || null,
+      state || null,
+      postal_code || null,
       country || null,
-      city || null
+      tax_id || null,
+      notes || null,
+      status
     ]);
     
     res.status(201).json({ success: true, customer: result.rows[0] });
@@ -107,18 +157,32 @@ router.post('/', authenticateToken, async (req, res) => {
 router.put('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { company_name, email, phone, country, city } = req.body;
-    const { id: user_id, role, tenant_id } = req.user;
+    const { 
+      first_name, 
+      last_name, 
+      email, 
+      company_name, 
+      phone, 
+      address, 
+      city, 
+      state, 
+      postal_code, 
+      country,
+      tax_id,
+      notes,
+      status
+    } = req.body;
+    const { id: user_id, role, tenantId } = req.user;
     
-    // Check ownership
+    // Check ownership - super_admin can access any customer
     let checkQuery;
     let checkParams;
-    if (role === 'admin') {
-      checkQuery = 'SELECT id FROM customers WHERE id = $1 AND tenant_id = $2';
-      checkParams = [id, tenant_id];
+    if (role === 'admin' || role === 'super_admin') {
+      checkQuery = 'SELECT id FROM customers WHERE id = $1';
+      checkParams = [id];
     } else {
       checkQuery = 'SELECT id FROM customers WHERE id = $1 AND user_id = $2 AND tenant_id = $3';
-      checkParams = [id, user_id, tenant_id];
+      checkParams = [id, user_id, tenantId];
     }
     
     const checkResult = await pool.query(checkQuery, checkParams);
@@ -128,17 +192,38 @@ router.put('/:id', authenticateToken, async (req, res) => {
     
     const query = `
       UPDATE customers 
-      SET company_name = $1, email = $2, phone = $3, country = $4, city = $5, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $6
+      SET first_name = COALESCE($1, first_name),
+          last_name = COALESCE($2, last_name),
+          email = COALESCE($3, email),
+          company_name = COALESCE($4, company_name),
+          phone = COALESCE($5, phone),
+          address_line1 = COALESCE($6, address_line1),
+          city = COALESCE($7, city),
+          state = COALESCE($8, state),
+          postal_code = COALESCE($9, postal_code),
+          country = COALESCE($10, country),
+          tax_id = COALESCE($11, tax_id),
+          notes = COALESCE($12, notes),
+          status = COALESCE($13, status),
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $14
       RETURNING *
     `;
     
     const result = await pool.query(query, [
-      company_name,
+      first_name,
+      last_name,
       email,
-      phone || null,
-      country || null,
-      city || null,
+      company_name,
+      phone,
+      address,
+      city,
+      state,
+      postal_code,
+      country,
+      tax_id,
+      notes,
+      status,
       id
     ]);
     

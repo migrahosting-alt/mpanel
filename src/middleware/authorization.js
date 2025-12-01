@@ -8,14 +8,21 @@ import logger from '../config/logger.js';
 /**
  * Check if user has specific permission
  * Usage: requirePermission('servers.create')
+ * Note: super_admin role bypasses all permission checks
  */
 export const requirePermission = (permissionName) => {
   return async (req, res, next) => {
     try {
       const userId = req.user?.id;
+      const userRole = req.user?.role;
 
       if (!userId) {
         return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      // Super admin bypasses all permission checks
+      if (userRole === 'super_admin' || userRole === 'SUPER_ADMIN') {
+        return next();
       }
 
       const hasPermission = await rbacService.hasPermission(userId, permissionName);
@@ -39,14 +46,21 @@ export const requirePermission = (permissionName) => {
 /**
  * Check if user has permission for resource and action
  * Usage: requireResourcePermission('servers', 'create')
+ * Note: super_admin role bypasses all permission checks
  */
 export const requireResourcePermission = (resource, action) => {
   return async (req, res, next) => {
     try {
       const userId = req.user?.id;
+      const userRole = req.user?.role;
 
       if (!userId) {
         return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      // Super admin bypasses all permission checks
+      if (userRole === 'super_admin' || userRole === 'SUPER_ADMIN') {
+        return next();
       }
 
       const hasPermission = await rbacService.hasResourcePermission(userId, resource, action);
@@ -70,14 +84,21 @@ export const requireResourcePermission = (resource, action) => {
 /**
  * Check if user has ANY of the specified permissions
  * Usage: requireAnyPermission(['servers.create', 'servers.update'])
+ * Note: super_admin role bypasses all permission checks
  */
 export const requireAnyPermission = (permissionNames) => {
   return async (req, res, next) => {
     try {
       const userId = req.user?.id;
+      const userRole = req.user?.role;
 
       if (!userId) {
         return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      // Super admin bypasses all permission checks
+      if (userRole === 'super_admin' || userRole === 'SUPER_ADMIN') {
+        return next();
       }
 
       for (const permissionName of permissionNames) {
@@ -102,14 +123,21 @@ export const requireAnyPermission = (permissionNames) => {
 /**
  * Check if user has ALL of the specified permissions
  * Usage: requireAllPermissions(['servers.read', 'deployments.database'])
+ * Note: super_admin role bypasses all permission checks
  */
 export const requireAllPermissions = (permissionNames) => {
   return async (req, res, next) => {
     try {
       const userId = req.user?.id;
+      const userRole = req.user?.role;
 
       if (!userId) {
         return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      // Super admin bypasses all permission checks
+      if (userRole === 'super_admin' || userRole === 'SUPER_ADMIN') {
+        return next();
       }
 
       for (const permissionName of permissionNames) {

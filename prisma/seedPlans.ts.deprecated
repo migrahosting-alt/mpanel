@@ -1,0 +1,33 @@
+// ⚠️  DEPRECATED - DO NOT USE
+// This seed file is deprecated and replaced by:
+//   - prisma/seedProductsFromConfig.ts (for products/prices)
+//   - prisma/seedDevData.ts (for dev data)
+//
+// See docs/DATA_RESET_POLICY.md for the new workflow
+
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+
+async function main() {
+  console.error('❌ ERROR: This seed file is DEPRECATED');
+  console.error('');
+  console.error('Use the new seed workflow instead:');
+  console.error('  1. npm run reset:dev');
+  console.error('  2. npm run seed:products');
+  console.error('  3. npm run seed:dev');
+  console.error('');
+  console.error('Or run all at once:');
+  console.error('  npm run seed:dev:full');
+  console.error('');
+  process.exit(1);
+}
+
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });

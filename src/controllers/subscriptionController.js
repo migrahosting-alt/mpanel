@@ -5,9 +5,54 @@ import { stripe } from '../config/stripeConfig.js';
 
 export const createSubscription = async (req, res) => {
   try {
+    let { productId, customerId, billingCycle, price, startDate } = req.body;
+    
+    // If productId is not a UUID, look it up by code/name
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (productId && !uuidRegex.test(productId)) {
+      const productResult = await pool.query(
+        'SELECT id, name, price FROM products WHERE code = $1 OR name ILIKE $2 LIMIT 1',
+        [productId, `%${productId.replace(/-/g, ' ')}%`]
+      );
+      if (productResult.rows.length === 0) {
+        return res.status(404).json({ error: `Product not found: ${productId}` });
+      }
+      const product = productResult.rows[0];
+      productId = product.id;
+      // Use product price if not provided
+      if (!price && product.price) {
+        price = product.price;
+      }
+      logger.info(`Resolved product to UUID: ${productId}`);
+    }
+    
+    // If customerId is not a UUID, look it up
+    if (customerId && !uuidRegex.test(customerId)) {
+      const customerResult = await pool.query(
+        'SELECT id FROM customers WHERE id::text = $1 OR email = $1 LIMIT 1',
+        [customerId]
+      );
+      if (customerResult.rows.length === 0) {
+        return res.status(404).json({ error: `Customer not found: ${customerId}` });
+      }
+      customerId = customerResult.rows[0].id;
+    }
+    
+    // Calculate next billing date
+    const nextBillingDate = startDate ? new Date(startDate) : new Date();
+    if (billingCycle === 'monthly') {
+      nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
+    } else if (billingCycle === 'yearly' || billingCycle === 'annually') {
+      nextBillingDate.setFullYear(nextBillingDate.getFullYear() + 1);
+    }
+
     const subscriptionData = {
       tenantId: req.user.tenantId,
-      ...req.body
+      customerId,
+      productId,
+      billingCycle,
+      price,
+      nextBillingDate
     };
 
     const subscription = await Subscription.create(subscriptionData);

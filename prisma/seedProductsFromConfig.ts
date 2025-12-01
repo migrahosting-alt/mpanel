@@ -11,6 +11,7 @@
  * Usage: npm run seed:products
  */
 
+import 'dotenv/config';
 import pg from 'pg';
 import {
   ALL_PLANS,
@@ -23,6 +24,8 @@ import {
   type AddonPlan,
   type PlanFamily,
 } from '../src/config/plansConfig.js';
+
+dotenv.config();
 
 const { Pool } = pg;
 

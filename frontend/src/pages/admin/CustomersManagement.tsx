@@ -127,124 +127,6 @@ const AVAILABLE_TAGS: CustomerTag[] = [
   { id: '8', name: 'High Value', color: 'bg-amber-500' },
 ];
 
-// Mock customers for demonstration when API returns empty
-const MOCK_CUSTOMERS: Customer[] = [
-  {
-    id: '1',
-    email: 'john.doe@techcorp.com',
-    first_name: 'John',
-    last_name: 'Doe',
-    company_name: 'TechCorp Solutions',
-    phone: '+1 (555) 123-4567',
-    address: '123 Tech Boulevard',
-    city: 'San Francisco',
-    state: 'CA',
-    postal_code: '94102',
-    country: 'US',
-    status: 'active',
-    stripe_customer_id: 'cus_QxJ8kL9mN2pR',
-    total_revenue: 2847.50,
-    subscription_count: 3,
-    created_at: '2023-06-15T10:30:00Z',
-    updated_at: new Date(Date.now() - 3600000).toISOString(),
-  },
-  {
-    id: '2',
-    email: 'sarah.wilson@startup.io',
-    first_name: 'Sarah',
-    last_name: 'Wilson',
-    company_name: 'StartupIO',
-    phone: '+1 (555) 987-6543',
-    address: '456 Innovation Way',
-    city: 'Austin',
-    state: 'TX',
-    postal_code: '78701',
-    country: 'US',
-    status: 'active',
-    stripe_customer_id: 'cus_RtK5mN8pQ3sT',
-    total_revenue: 5634.00,
-    subscription_count: 5,
-    created_at: '2023-03-22T14:45:00Z',
-    updated_at: new Date(Date.now() - 86400000).toISOString(),
-  },
-  {
-    id: '3',
-    email: 'michael.chen@enterprise.net',
-    first_name: 'Michael',
-    last_name: 'Chen',
-    company_name: 'Enterprise Networks Inc.',
-    phone: '+1 (555) 456-7890',
-    address: '789 Corporate Plaza',
-    city: 'New York',
-    state: 'NY',
-    postal_code: '10001',
-    country: 'US',
-    status: 'active',
-    stripe_customer_id: 'cus_StU6nO9qR4vW',
-    total_revenue: 12450.75,
-    subscription_count: 8,
-    created_at: '2022-11-08T09:15:00Z',
-    updated_at: new Date(Date.now() - 172800000).toISOString(),
-  },
-  {
-    id: '4',
-    email: 'emily.rodriguez@webdev.co',
-    first_name: 'Emily',
-    last_name: 'Rodriguez',
-    company_name: 'WebDev Co',
-    phone: '+1 (555) 321-0987',
-    address: '321 Developer Lane',
-    city: 'Seattle',
-    state: 'WA',
-    postal_code: '98101',
-    country: 'US',
-    status: 'pending_payment',
-    stripe_customer_id: 'cus_TuV7oP0rS5wX',
-    total_revenue: 849.99,
-    subscription_count: 2,
-    created_at: '2024-01-10T16:20:00Z',
-    updated_at: new Date(Date.now() - 604800000).toISOString(),
-  },
-  {
-    id: '5',
-    email: 'david.kumar@cloudops.tech',
-    first_name: 'David',
-    last_name: 'Kumar',
-    company_name: 'CloudOps Technologies',
-    phone: '+1 (555) 654-3210',
-    address: '555 Cloud Street',
-    city: 'Denver',
-    state: 'CO',
-    postal_code: '80202',
-    country: 'US',
-    status: 'active',
-    stripe_customer_id: 'cus_UvW8pQ1sT6xY',
-    total_revenue: 8234.25,
-    subscription_count: 6,
-    created_at: '2023-08-05T11:00:00Z',
-    updated_at: new Date(Date.now() - 43200000).toISOString(),
-  },
-  {
-    id: '6',
-    email: 'lisa.thompson@agency.com',
-    first_name: 'Lisa',
-    last_name: 'Thompson',
-    company_name: 'Digital Agency Pro',
-    phone: '+1 (555) 789-0123',
-    address: '888 Agency Ave',
-    city: 'Los Angeles',
-    state: 'CA',
-    postal_code: '90001',
-    country: 'US',
-    status: 'suspended',
-    stripe_customer_id: 'cus_VwX9qR2tU7yZ',
-    total_revenue: 1567.00,
-    subscription_count: 0,
-    created_at: '2023-12-01T08:30:00Z',
-    updated_at: new Date(Date.now() - 2592000000).toISOString(),
-  },
-];
-
 const STATUSES = [
   { value: 'active', label: 'Active', color: 'bg-green-100 text-green-800' },
   { value: 'inactive', label: 'Inactive', color: 'bg-gray-100 text-gray-800' },
@@ -309,13 +191,7 @@ export default function CustomersManagement() {
       });
       if (!response.ok) throw new Error('Failed to fetch customers');
       const data = await response.json();
-      let customerList = data.customers || data.data || [];
-      
-      // Use mock data if API returns empty
-      if (customerList.length === 0) {
-        console.log('API returned empty, using mock customer data');
-        customerList = MOCK_CUSTOMERS;
-      }
+      const customerList = data.customers || data.data || [];
       
       setCustomers(customerList);
       
@@ -331,18 +207,15 @@ export default function CustomersManagement() {
       
       setError(null);
     } catch (err: any) {
-      console.error('API error, using mock data:', err.message);
-      // Use mock data on error
-      setCustomers(MOCK_CUSTOMERS);
-      const active = MOCK_CUSTOMERS.filter(c => c.status === 'active').length;
-      const totalRev = MOCK_CUSTOMERS.reduce((sum, c) => sum + (c.total_revenue || 0), 0);
+      console.error('Error fetching customers:', err.message);
+      setError(err.message);
+      setCustomers([]);
       setStats({
-        totalCustomers: MOCK_CUSTOMERS.length,
-        activeCustomers: active,
-        totalRevenue: totalRev,
-        avgRevenuePerCustomer: MOCK_CUSTOMERS.length > 0 ? totalRev / MOCK_CUSTOMERS.length : 0,
+        totalCustomers: 0,
+        activeCustomers: 0,
+        totalRevenue: 0,
+        avgRevenuePerCustomer: 0,
       });
-      setError(null); // Clear error since we have mock data
     } finally {
       setLoading(false);
     }

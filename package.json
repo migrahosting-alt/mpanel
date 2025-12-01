@@ -33,7 +33,11 @@
     "ci:test": "npm run test:coverage",
     "ci:lint": "npm run lint && npm run format:check",
     "deploy:mpanel-core": "bash ~/deploy_migrapanel_ui_to_mpanel_core.sh",
+    "reset:dev": "RESET_DEV_DATABASE=YES tsx scripts/reset-dev-database.ts",
     "seed:products": "tsx prisma/seedProductsFromConfig.ts",
+    "seed:dev": "tsx prisma/seedDevData.ts",
+    "seed:dev:full": "npm run reset:dev && npm run seed:products && npm run seed:dev",
+    "grant:superadmin": "tsx scripts/grantSuperAdmin.ts",
     "postinstall": "npm --prefix frontend install"
   },
   "keywords": [
