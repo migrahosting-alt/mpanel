@@ -61,6 +61,13 @@ import AuditLog from './pages/admin/AuditLog';
 import SystemEvents from './pages/admin/SystemEvents';
 import ShieldManagement from './pages/admin/ShieldManagement';
 
+// Phase 2 Enterprise Modules
+import CloudPodsDashboardPage from './modules/cloudpods/pages/CloudPodsDashboardPage';
+import CloudPodDetailPage from './modules/cloudpods/pages/CloudPodDetailPage';
+import GuardianDashboardPage from './modules/guardian/pages/GuardianDashboardPage';
+import GuardianScanDetailPage from './modules/guardian/pages/GuardianScanDetailPage';
+import MonitoringDashboardPage from './modules/monitoring/pages/MonitoringDashboardPage';
+
 // Client portal
 import ClientLayout from './components/ClientLayout';
 import ClientDashboard from './pages/client/ClientDashboard';
@@ -179,6 +186,13 @@ function App() {
       <Route path="/marketplace" element={<ProtectedRoute><APIMarketplace /></ProtectedRoute>} />
       <Route path="/api-marketplace" element={<ProtectedRoute><APIMarketplace /></ProtectedRoute>} />
       <Route path="/white-label" element={<ProtectedRoute><WhiteLabel /></ProtectedRoute>} />
+      
+      {/* Phase 2 Enterprise Routes (Non-breaking additions) */}
+      <Route path="/cloudpods" element={<ProtectedRoute><CloudPodsDashboardPage /></ProtectedRoute>} />
+      <Route path="/cloudpods/:podId" element={<ProtectedRoute><CloudPodDetailPage /></ProtectedRoute>} />
+      <Route path="/guardian" element={<ProtectedRoute><GuardianDashboardPage /></ProtectedRoute>} />
+      <Route path="/guardian/scans/:scanId" element={<ProtectedRoute><GuardianScanDetailPage /></ProtectedRoute>} />
+      <Route path="/enterprise/monitoring" element={<ProtectedRoute><MonitoringDashboardPage /></ProtectedRoute>} />
       
       {/* Client Portal Routes */}
       <Route path="/client" element={<ProtectedRoute><ClientLayout /></ProtectedRoute>}>
