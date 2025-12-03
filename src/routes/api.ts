@@ -24,6 +24,7 @@ import guardianRouter from '../modules/guardian/guardian.router.js';
 // import guardianSecurityRouter from '../modules/guardian-security/guardianSecurity.router.js';
 import serversRouter from '../modules/ops/servers.router.js';
 import opsProvisioningRouter from '../modules/ops/provisioning.router.js';
+import opsOverviewRouter from '../modules/ops/overview.router.js';
 import rbacRouter from '../modules/security/rbac.router.js';
 import shieldRouter from '../modules/security/shield.router.js';
 import tenantProvisioningRouter from '../modules/provisioning/provisioning.router.js';
@@ -89,6 +90,9 @@ router.use('/ops/servers', serversRouter);
 
 // Ops: Provisioning (queue orchestration)
 router.use('/ops/provisioning', opsProvisioningRouter);
+
+// Ops: Overview (operational dashboard)
+router.use('/ops/overview', opsOverviewRouter);
 
 // ============================================
 // SECURITY ROUTES
