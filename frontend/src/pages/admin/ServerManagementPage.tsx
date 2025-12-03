@@ -109,7 +109,7 @@ export default function ServerManagementPage() {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${API_BASE}/servers`, {
+      const response = await fetch(`${API_BASE}/ops/servers`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error('Failed to fetch servers');
@@ -126,7 +126,7 @@ export default function ServerManagementPage() {
   const fetchServerMetrics = async (serverId: string) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${API_BASE}/servers/${serverId}/metrics`, {
+      const response = await fetch(`${API_BASE}/ops/servers/${serverId}/metrics`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (response.ok) {
@@ -774,7 +774,7 @@ function ServerFormModal({
 
     try {
       const token = localStorage.getItem('token');
-      const url = server ? `${API_BASE}/servers/${server.id}` : `${API_BASE}/servers`;
+      const url = server ? `${API_BASE}/ops/servers/${server.id}` : `${API_BASE}/ops/servers`;
       const method = server ? 'PUT' : 'POST';
 
       const response = await fetch(url, {

@@ -107,7 +107,7 @@ export default function ProvisioningModule() {
   const fetchTasks = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${API_BASE}/provisioning/tasks`, {
+      const response = await fetch(`${API_BASE}/ops/provisioning/jobs`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error('Failed to fetch tasks');

@@ -304,7 +304,7 @@ export default function CustomersManagement() {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`${API_BASE}/customers`, {
+      const response = await fetch(`${API_BASE}/admin/customers`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error('Failed to fetch customers');

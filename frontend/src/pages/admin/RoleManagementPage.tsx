@@ -187,7 +187,7 @@ export default function RoleManagementPage() {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
-      const response = await fetch(`${API_BASE}/roles`, {
+      const response = await fetch(`${API_BASE}/security/rbac/roles`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (response.ok) {
