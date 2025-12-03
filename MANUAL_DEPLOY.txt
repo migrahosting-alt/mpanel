@@ -1,0 +1,120 @@
+====================================================================
+MANUAL DEPLOYMENT COMMANDS FOR ALL 5 ENTERPRISE ADMIN MODULES
+====================================================================
+
+Run these commands in order:
+
+1️⃣ BACKEND DEPLOYMENT:
+-----------------------
+
+# Package backend files
+cd /home/bonex/MigraWeb/MigraHosting/dev/migra-panel
+tar czf mpanel-backend-$(date +%Y%m%d-%H%M%S).tar.gz dist/ src/ package.json ecosystem.config.cjs
+
+# Copy to server (replace with actual archive name)
+scp mpanel-backend-*.tar.gz root@100.97.213.11:/tmp/
+
+# SSH into server
+ssh root@100.97.213.11
+
+# On server:
+cd /opt/mpanel
+cp /tmp/mpanel-backend-*.tar.gz .
+tar xzf mpanel-backend-*.tar.gz
+pm2 restart ecosystem.config.cjs
+pm2 logs --lines 50
+
+# Exit server
+exit
+
+
+2️⃣ FRONTEND DEPLOYMENT:
+------------------------
+
+# From local machine
+cd /home/bonex/MigraWeb/MigraHosting/dev/migra-panel/frontend
+tar czf frontend-dist-$(date +%Y%m%d-%H%M%S).tar.gz -C dist .
+
+# Copy to server
+scp frontend-dist-*.tar.gz root@100.97.213.11:/tmp/
+
+# SSH into server
+ssh root@100.97.213.11
+
+# On server:
+cd /var/www/migrapanel.com/public
+cp /tmp/frontend-dist-*.tar.gz .
+tar xzf frontend-dist-*.tar.gz
+rm frontend-dist-*.tar.gz
+
+# Exit server
+exit
+
+
+3️⃣ VERIFY DEPLOYMENT:
+----------------------
+
+# Test backend health
+curl https://migrapanel.com/api/health
+
+# Check PM2 status
+ssh root@100.97.213.11 "pm2 status"
+
+# View logs
+ssh root@100.97.213.11 "pm2 logs mpanel-backend --lines 30"
+
+
+4️⃣ TEST API ENDPOINTS:
+-----------------------
+
+# You'll need a valid JWT token first
+# Then test each module:
+
+curl -H "Authorization: Bearer YOUR_TOKEN" https://migrapanel.com/api/users
+curl -H "Authorization: Bearer YOUR_TOKEN" https://migrapanel.com/api/guardian/instances
+curl -H "Authorization: Bearer YOUR_TOKEN" https://migrapanel.com/api/provisioning/cloudpods
+curl -H "Authorization: Bearer YOUR_TOKEN" https://migrapanel.com/api/platform/customers
+curl -H "Authorization: Bearer YOUR_TOKEN" https://migrapanel.com/api/platform/servers
+
+
+5️⃣ SET ENVIRONMENT VARIABLE:
+-----------------------------
+
+ssh root@100.97.213.11
+echo 'PLATFORM_OWNER_EMAIL=your-email@domain.com' >> /opt/mpanel/.env
+pm2 restart mpanel-backend
+
+
+====================================================================
+📋 DEPLOYMENT CHECKLIST:
+====================================================================
+
+Backend:
+[ ] Backend tarball created
+[ ] Files copied to server
+[ ] Extracted to /opt/mpanel
+[ ] PM2 restarted
+[ ] No errors in PM2 logs
+[ ] Health check passes
+
+Frontend:
+[ ] Frontend tarball created
+[ ] Files copied to server  
+[ ] Extracted to /var/www/migrapanel.com/public
+[ ] Hard refresh browser (Ctrl+Shift+R)
+[ ] Mobile menu visible
+
+API Testing:
+[ ] Users API working
+[ ] Guardian API working
+[ ] Provisioning API working
+[ ] Customers API working (platform admin)
+[ ] Servers API working (platform admin)
+
+Configuration:
+[ ] PLATFORM_OWNER_EMAIL set in .env
+[ ] PM2 restarted after env change
+
+====================================================================
+🎉 ALL 5 MODULES DEPLOYED!
+====================================================================

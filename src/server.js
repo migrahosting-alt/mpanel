@@ -23,6 +23,7 @@ import {
   readinessHandler,
   livenessHandler 
 } from './middleware/prometheus.js';
+import shieldMiddleware from './middleware/shield.js';
 import { initializeGracefulShutdown, onShutdown, shutdownMiddleware } from './utils/gracefulShutdown.js';
 import { startDatabaseMonitoring } from './utils/dbHealthCheck.js';
 import { 
@@ -55,10 +56,43 @@ import websocketService from './services/websocketService.js';
 import { createServer } from 'http';
 import { initializeGraphQL } from './graphql/server.js';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// ============================================================================
+// TypeScript API bridge
+// ----------------------------------------------------------------------------
+// Production still starts this legacy server entrypoint via PM2 (node src/server.js).
+// To expose the new TypeScript modules (auth, products, guardian security, etc.)
+// even when the legacy starter is used, dynamically import the compiled router
+// from dist/routes/api.js. This keeps every deployment path (pm2, scripts, docs)
+// working without forcing an immediate process manager change.
+// ============================================================================
+let tsApiRouter = null;
+let tsApiRouterReady = false;
+const distApiRouterPath = path.resolve(__dirname, '../dist/routes/api.js');
+
+try {
+  const module = await import(pathToFileURL(distApiRouterPath).href);
+  if (module?.default) {
+    tsApiRouter = module.default;
+    tsApiRouterReady = true;
+    logger.info('Mounted TypeScript API router via legacy server bridge', {
+      entry: distApiRouterPath,
+    });
+  } else {
+    logger.warn('TypeScript API router missing default export; using fallback', {
+      entry: distApiRouterPath,
+    });
+  }
+} catch (error) {
+  logger.warn('TypeScript API router unavailable; guardian endpoints will 404 until the backend is built', {
+    entry: distApiRouterPath,
+    error: error instanceof Error ? error.message : error,
+  });
+}
 
 // Load environment variables
 dotenv.config();
@@ -73,6 +107,12 @@ const app = express();
 
 // Trust proxy - required when behind Nginx/reverse proxy
 app.set('trust proxy', 1);
+
+// Top-of-stack tap to prove requests reach this Express instance
+app.use((req, _res, next) => {
+  console.log('[TOP] incoming:', req.method, req.originalUrl);
+  next();
+});
 
 // Initialize Sentry FIRST (before any other middleware)
 initSentry(app);
@@ -89,6 +129,16 @@ app.use(nPlusOneDetectionMiddleware);
 
 // 3. APM Transaction Tracking (production)
 app.use(apmMiddleware());
+
+// Temporary tracing to confirm /api/v1 requests reach the Express stack
+app.use((req, _res, next) => {
+  if (req.originalUrl?.includes('__debug') || req.originalUrl?.includes('__direct')) {
+    console.log('[mpanel-api] Trace hit:', req.method, req.originalUrl);
+  } else if (req.originalUrl?.startsWith('/api/v1')) {
+    console.log('[mpanel-api] Pre-route hit:', req.method, req.originalUrl);
+  }
+  next();
+});
 
 // 4. Response time tracking
 app.use(responseTimeMiddleware);
@@ -211,6 +261,77 @@ app.get('/api/health', healthCheckHandler);
 app.get('/api/ready', readinessHandler);
 app.get('/api/live', livenessHandler);
 
+// Temporary router dump endpoint to inspect middleware order
+app.get('/__router', (_req, res) => {
+  const stack = app._router?.stack;
+
+  if (!Array.isArray(stack)) {
+    return res.status(500).json({ error: 'No router stack found' });
+  }
+
+  const routes = stack.map((layer, idx) => {
+    if (layer.route) {
+      const methods = Object.keys(layer.route.methods || {})
+        .map(method => method.toUpperCase())
+        .join(',');
+
+      return {
+        index: idx,
+        type: 'route',
+        method: methods || 'USE',
+        path: layer.route.path,
+        name: layer.name
+      };
+    }
+
+    if (layer.name === 'router' && Array.isArray(layer.handle?.stack)) {
+      const child = layer.handle.stack.map(childLayer => {
+        if (childLayer.route) {
+          const methods = Object.keys(childLayer.route.methods || {})
+            .map(method => method.toUpperCase())
+            .join(',');
+          return {
+            path: childLayer.route.path,
+            methods: methods || 'USE'
+          };
+        }
+
+        return {
+          path: childLayer.regexp?.toString() || '<middleware>',
+          methods: 'USE'
+        };
+      });
+
+      return {
+        index: idx,
+        type: 'router',
+        path: layer.regexp?.toString() || '<router>',
+        name: layer.name,
+        children: child
+      };
+    }
+
+    return {
+      index: idx,
+      type: 'middleware',
+      name: layer.name,
+      path: layer.regexp?.toString() || '<anonymous>'
+    };
+  });
+
+  res.json(routes);
+});
+
+// Temporary endpoint to inspect router stack in production
+app.get('/__router', (_req, res) => {
+  const stack = app._router.stack
+    .map(layer => ({
+      name: layer?.name,
+      path: layer?.route?.path || layer?.regexp?.toString()
+    }));
+  res.json({ stack });
+});
+
 // Provisioning routes (Stripe → mPanel integration)
 app.use('/api/provisioning', provisioningStripeRouter);
 
@@ -228,14 +349,16 @@ app.use('/api/worker', workerRouter);
 // CloudPods internal API routes
 app.use('/api/internal/cloudpods', cloudPodsRouter);
 
-// TypeScript module routes (new architecture)
-// These are mounted under /api/v1 for versioning
-try {
-  const tsRouterModule = await import('./routes/typescript-loader.js');
-  app.use('/api/v1', tsRouterModule.default);
-  console.log('✓ TypeScript module routes loaded at /api/v1');
-} catch (error) {
-  console.warn('TypeScript routes not available:', error.message);
+// Temporary direct route to verify /api/v1 wiring without the TS loader
+app.get('/api/v1/__direct', (_req, res) => {
+  res.json({ status: 'direct-ok', timestamp: new Date().toISOString() });
+});
+
+// Mount compiled TypeScript routes (dist build) before falling back to legacy routes
+if (tsApiRouterReady && tsApiRouter) {
+  app.use('/api', shieldMiddleware, tsApiRouter);
+} else {
+  logger.warn('TypeScript routes not mounted via legacy bridge; only legacy /api handlers are available');
 }
 
 // API routes
@@ -320,7 +443,10 @@ await initializeGraphQL(app);
 
 // 404 handler - MUST be after GraphQL initialization
 app.use((req, res) => {
-  res.status(404).json({ error: 'Route not found' });
+  if (req.originalUrl?.startsWith('/api/v1')) {
+    console.warn('[mpanel-api] 404 for /api/v1 request:', req.method, req.originalUrl);
+  }
+  res.status(404).json({ error: 'Route not found (debug)' });
 });
 
 // Sentry error handler - MUST be after routes, BEFORE other error handlers

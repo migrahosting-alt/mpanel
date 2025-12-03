@@ -19,6 +19,8 @@
     "server:migrate": "npm run migrate",
     "ssl-worker": "node src/workers/sslWorker.js",
     "ssl-worker:dev": "node --watch src/workers/sslWorker.js",
+    "worker:guardian:ts": "tsx src/jobs/runGuardianSecurityWorker.ts",
+    "worker:guardian": "node dist/jobs/runGuardianSecurityWorker.js",
     "test": "node --test src/tests/**/*.test.js",
     "test:watch": "node --watch --test src/tests/**/*.test.js",
     "test:coverage": "node --test --experimental-test-coverage src/tests/**/*.test.js",
@@ -34,6 +36,8 @@
     "ci:lint": "npm run lint && npm run format:check",
     "deploy:mpanel-core": "bash ~/deploy_migrapanel_ui_to_mpanel_core.sh",
     "seed:products": "tsx prisma/seedProductsFromConfig.ts",
+    "shield:seed": "tsx scripts/shield/seedShieldPolicy.ts",
+    "shield:smoke": "tsx scripts/shield/shieldSmokeTest.ts",
     "postinstall": "npm --prefix frontend install"
   },
   "keywords": [

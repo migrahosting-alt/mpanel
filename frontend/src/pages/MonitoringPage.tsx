@@ -82,8 +82,16 @@ export default function MonitoringPage() {
       setStats(statsRes.data);
       setAlerts(alertsRes.data.alerts);
       setRules(rulesRes.data.rules);
-    } catch (error) {
-      toast.error('Failed to fetch monitoring data');
+    } catch (error: any) {
+      console.error('Failed to fetch monitoring data:', error);
+      // Don't show error toast for features not yet implemented
+      if (error?.response?.status !== 404 && error?.response?.status !== 501) {
+        toast.error('Failed to fetch monitoring data');
+      }
+      // Set empty states
+      setStats(null);
+      setAlerts([]);
+      setRules([]);
     } finally {
       setLoading(false);
     }
@@ -174,6 +182,30 @@ export default function MonitoringPage() {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  // Show "Coming Soon" state if no data available
+  if (!stats && alerts.length === 0 && rules.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Resource Monitoring</h1>
+          <p className="text-gray-600 mt-1">Real-time metrics and alerts</p>
+        </div>
+        <div className="text-center py-16 bg-white rounded-xl border border-slate-200">
+          <BellIcon className="h-16 w-16 text-slate-300 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-slate-900 mb-2">
+            Monitoring Coming Soon
+          </h3>
+          <p className="text-slate-600 mb-4 max-w-md mx-auto">
+            Advanced monitoring and alerting features are not enabled yet in your environment.
+          </p>
+          <p className="text-sm text-slate-500">
+            This module will be available in a future update.
+          </p>
+        </div>
       </div>
     );
   }

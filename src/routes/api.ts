@@ -20,7 +20,8 @@ import billingRouter from '../modules/billing/routes.js';
 import usersRouter from '../modules/users/users.router.js';
 import customersRouter from '../modules/customers/customers.router.js';
 import guardianRouter from '../modules/guardian/guardian.router.js';
-import guardianSecurityRouter from '../modules/guardian-security/guardianSecurity.router.js';
+// TODO: Re-enable once guardianSecurity module is ready
+// import guardianSecurityRouter from '../modules/guardian-security/guardianSecurity.router.js';
 import serversRouter from '../modules/ops/servers.router.js';
 import opsProvisioningRouter from '../modules/ops/provisioning.router.js';
 import rbacRouter from '../modules/security/rbac.router.js';
@@ -66,7 +67,8 @@ router.use('/users', usersRouter);
 router.use('/guardian', guardianRouter);
 
 // Guardian Security (agent ingestion + findings/remediation)
-router.use('/guardian/security', guardianSecurityRouter);
+// TODO: Re-enable once module is ready
+// router.use('/guardian/security', guardianSecurityRouter);
 
 // Provisioning (CloudPods + Jobs) - tenant-scoped
 router.use('/provisioning', tenantProvisioningRouter);

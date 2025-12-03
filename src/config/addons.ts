@@ -361,6 +361,13 @@ export function validateSelectedAddons(
 }
 
 /**
+ * Return the subset of add-ons that apply to a specific parent type.
+ */
+export function getAddonsForTargetType(targetType: AddonTargetType): AddonConfig[] {
+  return ADDONS.filter(addon => addon.applicableTo.includes(targetType));
+}
+
+/**
  * Convenience helper to split selected add-ons into:
  * - monthly recurring list
  * - yearly recurring list

@@ -5,12 +5,16 @@
  */
 import { Router } from 'express';
 
-const router = Router();
-
-// Try to load TypeScript routes if available
-try {
-  // Register tsx for TypeScript runtime support
-  await import('tsx/esm/api').then(async (tsx) => {
+/**
+ * Load TypeScript routes asynchronously
+ * Returns a router with TypeScript routes mounted
+ */
+export default async function loadTypescriptRoutes() {
+  const router = Router();
+  
+  try {
+    // Register tsx for TypeScript runtime support
+    const tsx = await import('tsx/esm/api');
     const { tsImport } = tsx;
     
     // Import TypeScript API routes
@@ -20,10 +24,10 @@ try {
     router.use('/', apiRoutes.default);
     
     console.log('✓ TypeScript routes loaded successfully');
-  });
-} catch (error) {
-  console.warn('TypeScript routes not available:', error.message);
-  console.log('Using legacy JavaScript routes only');
+  } catch (error) {
+    console.warn('TypeScript routes not available:', error.message);
+    console.log('Using legacy JavaScript routes only');
+  }
+  
+  return router;
 }
-
-export default router;

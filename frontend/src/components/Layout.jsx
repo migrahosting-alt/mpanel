@@ -21,6 +21,8 @@ import {
   CogIcon,
   RocketLaunchIcon,
   UserGroupIcon,
+  Bars3Icon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline';
 import CommandPalette from './CommandPalette';
 
@@ -33,8 +35,10 @@ const getNavigation = (isAdmin, hasPermission) => {
     { name: 'Users', href: '/admin/users', icon: UsersIcon, section: 'admin', permission: 'users.read' },
     { name: 'Customers', href: '/admin/customers', icon: BuildingOfficeIcon, section: 'admin', permission: 'customers.read' },
     { name: 'Guardian AI', href: '/admin/guardian', icon: SparklesIcon, section: 'admin', badge: 'Abigail', permission: 'guardian.read' },
+    { name: 'Guardian SOC', href: '/admin/guardian/soc', icon: ShieldCheckIcon, section: 'admin', badge: 'Enterprise', permission: 'guardian.security.read' },
     { name: 'Server Management', href: '/server-management', icon: RocketLaunchIcon, section: 'admin', badge: 'Deploy', permission: 'deployments.read' },
     { name: 'Provisioning', href: '/provisioning', icon: CogIcon, section: 'admin', badge: 'Auto', permission: 'provisioning.read' },
+    { name: 'Migra Shield', href: '/admin/shield', icon: ShieldCheckIcon, section: 'admin', badge: 'Zero Trust', permission: 'platform:shield:manage' },
     { name: 'Role Management', href: '/admin/roles', icon: UserGroupIcon, section: 'admin', badge: 'RBAC', permission: 'roles.read' },
   ];
 
@@ -116,6 +120,7 @@ const getSections = (isAdmin) => {
 export default function Layout({ children }) {
   const location = useLocation();
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const { user, logout, hasPermission, isAdmin } = useAuth();
   
   const navigation = getNavigation(isAdmin, hasPermission);
@@ -136,8 +141,39 @@ export default function Layout({ children }) {
     <div className="min-h-screen bg-gray-50">
       <CommandPalette isOpen={isCommandPaletteOpen} setIsOpen={setIsCommandPaletteOpen} />
       
+      {/* Mobile header */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-white border-b border-gray-200 z-40 flex items-center justify-between px-4">
+        <button
+          onClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
+          className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+        >
+          {isMobileSidebarOpen ? (
+            <XMarkIcon className="h-6 w-6 text-gray-700" />
+          ) : (
+            <Bars3Icon className="h-6 w-6 text-gray-700" />
+          )}
+        </button>
+        <div className="flex items-center gap-2">
+          <img src="/brand/migrahosting-icon.svg" alt="M" className="h-8 w-8" />
+          <span className="text-lg font-bold text-gray-900">MigraHosting</span>
+        </div>
+        <div className="w-10"></div> {/* Spacer for centering */}
+      </div>
+
+      {/* Mobile sidebar overlay */}
+      {isMobileSidebarOpen && (
+        <div 
+          className="lg:hidden fixed inset-0 bg-black bg-opacity-50 z-40"
+          onClick={() => setIsMobileSidebarOpen(false)}
+        />
+      )}
+      
       {/* Sidebar */}
-      <div className="fixed inset-y-0 left-0 w-64 bg-white border-r border-gray-200">
+      <div className={`
+        fixed inset-y-0 left-0 w-64 bg-white border-r border-gray-200 z-50 transform transition-transform duration-300 ease-in-out
+        ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+        lg:translate-x-0
+      `}>
         <div className="flex flex-col h-full">
           {/* Logo */}
           <div className="flex items-center justify-between h-16 px-6 border-b border-gray-200">
@@ -174,6 +210,7 @@ export default function Layout({ children }) {
                       <Link
                         key={item.name}
                         to={item.href}
+                        onClick={() => setIsMobileSidebarOpen(false)}
                         className={`
                           flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors
                           ${isActive
@@ -234,8 +271,8 @@ export default function Layout({ children }) {
       </div>
 
       {/* Main content */}
-      <div className="pl-64">
-        <main className="p-8">
+      <div className="lg:pl-64 pt-16 lg:pt-0">
+        <main className="p-4 sm:p-6 lg:p-8">
           {children}
         </main>
       </div>

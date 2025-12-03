@@ -40,10 +40,14 @@ export default function EmailManagement() {
       const result = await response.json();
       
       if (response.ok) {
-        setAccounts(result.data);
+        setAccounts(result.data || []);
+      } else {
+        // Set empty array for non-implemented features
+        setAccounts([]);
       }
     } catch (error) {
       console.error('Error loading email accounts:', error);
+      setAccounts([]);
     } finally {
       setLoading(false);
     }
@@ -244,8 +248,13 @@ export default function EmailManagement() {
           ) : accounts.length === 0 ? (
             <div className="rounded-2xl border border-white/10 bg-white/5 p-12 text-center">
               <Mail className="mx-auto mb-4 h-16 w-16 text-white/30" />
-              <h3 className="mb-2 text-xl font-semibold text-white">No Email Accounts</h3>
-              <p className="text-white/70">Create your first email account using the button above</p>
+              <h3 className="mb-2 text-xl font-semibold text-white">Email Management Coming Soon</h3>
+              <p className="text-white/70 mb-2">
+                Email account management is not enabled yet in your environment.
+              </p>
+              <p className="text-white/50 text-sm">
+                This module will be available in a future update.
+              </p>
             </div>
           ) : (
             <div className="space-y-4">

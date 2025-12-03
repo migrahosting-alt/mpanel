@@ -285,12 +285,13 @@ export async function reactivateTenant(
 /**
  * Add a user to a tenant with a specific role.
  */
-export async function addUserToTenant(
-  tenantId: string,
-  userId: string,
-  role: string,
-  actorUserId: string
-): Promise<void> {
+export async function addUserToTenant(input: {
+  tenantId: string;
+  userId: string;
+  role: string;
+  actorUserId?: string;
+}): Promise<{ id: string; createdAt: Date }> {
+  const { tenantId, userId, role, actorUserId } = input;
   // Check if already a member
   const existing = await prisma.tenantUser.findFirst({
     where: {
@@ -302,10 +303,10 @@ export async function addUserToTenant(
 
   if (existing) {
     logger.debug('User already member of tenant', { tenantId, userId });
-    return;
+    return { id: existing.id, createdAt: existing.createdAt };
   }
 
-  await prisma.tenantUser.create({
+  const membership = await prisma.tenantUser.create({
     data: {
       tenantId,
       userId,
@@ -315,7 +316,7 @@ export async function addUserToTenant(
   });
 
   await writeAuditEvent({
-    actorUserId,
+    actorUserId: actorUserId ?? null,
     tenantId,
     type: 'USER_CREATED', // Role assigned
     metadata: {
@@ -330,6 +331,8 @@ export async function addUserToTenant(
     role,
     actorUserId,
   });
+
+  return { id: membership.id, createdAt: membership.createdAt };
 }
 
 /**
@@ -404,6 +407,51 @@ export async function getTenantOwner(tenantId: string): Promise<User | null> {
   });
 
   return (ownership?.user as User) ?? null;
+}
+
+/**
+ * Get users by role in a tenant.
+ */
+export async function getTenantUsersByRole(tenantId: string, role: string) {
+  const memberships = await prisma.tenantUser.findMany({
+    where: {
+      tenantId,
+      role,
+      deletedAt: null,
+    },
+    include: {
+      user: true,
+    },
+  });
+
+  return memberships.map(m => ({
+    user: m.user,
+    role: m.role,
+    joinedAt: m.createdAt,
+  }));
+}
+
+/**
+ * Update a user's role in a tenant.
+ */
+export async function updateUserRole(
+  tenantId: string,
+  userId: string,
+  newRole: string
+): Promise<void> {
+  await prisma.tenantUser.updateMany({
+    where: {
+      tenantId,
+      userId,
+      deletedAt: null,
+    },
+    data: {
+      role: newRole,
+      updatedAt: new Date(),
+    },
+  });
+
+  logger.info('Updated user role in tenant', { tenantId, userId, newRole });
 }
 
 // ============================================

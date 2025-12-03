@@ -9,6 +9,7 @@
 
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
+import logger from '../config/logger.js';
 
 const execAsync = promisify(exec);
 
@@ -17,6 +18,34 @@ const PROXMOX_HOST = process.env.PROXMOX_HOST || '10.1.10.70';
 const PROXMOX_USER = process.env.PROXMOX_SSH_USER || 'mpanel-automation';
 const PROXMOX_SSH_KEY = process.env.PROXMOX_SSH_KEY_PATH || '/home/mhadmin/.ssh/id_ed25519';
 const PROXMOX_SSH_OPTS = process.env.PROXMOX_SSH_OPTS || '-o StrictHostKeyChecking=no -o ConnectTimeout=30';
+const PROXMOX_NODE_HOSTS = process.env.PROXMOX_NODE_HOSTS;
+
+const nodeHostMap: Record<string, string> = {};
+
+if (PROXMOX_NODE_HOSTS) {
+  for (const entry of PROXMOX_NODE_HOSTS.split(',')) {
+    const [alias, host] = entry.split('=').map(part => part.trim());
+    if (alias && host) {
+      nodeHostMap[alias] = host;
+    }
+  }
+}
+
+function resolveHostForNode(node?: string): string {
+  if (!node) {
+    return PROXMOX_HOST;
+  }
+
+  if (nodeHostMap[node]) {
+    return nodeHostMap[node];
+  }
+
+  if (/^(?:\d{1,3}\.){3}\d{1,3}$/.test(node) || node.includes(':')) {
+    return node;
+  }
+
+  return node;
+}
 
 export interface ProxmoxCommandResult {
   stdout: string;
@@ -95,6 +124,29 @@ export async function runProxmoxCommand(command: string): Promise<ProxmoxCommand
       stderr: error.stderr ?? error.message,
       exitCode: error.code ?? 1
     };
+  }
+}
+
+export async function sshExec(node: string, command: string): Promise<string> {
+  const host = resolveHostForNode(node);
+  const sshCmd = `ssh ${PROXMOX_SSH_OPTS} -i ${PROXMOX_SSH_KEY} ${PROXMOX_USER}@${host} ${JSON.stringify(command)}`;
+
+  logger.debug('[proxmoxSsh] Executing command', {
+    host,
+    node,
+    command,
+  });
+
+  try {
+    const { stdout } = await execAsync(sshCmd, {
+      maxBuffer: 10 * 1024 * 1024,
+      timeout: 300000,
+    });
+
+    return stdout;
+  } catch (error: any) {
+    logger.error('[proxmoxSsh] sshExec failed', { error, host, node });
+    throw new Error(error.stderr || error.message || 'sshExec failed');
   }
 }
 

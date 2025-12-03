@@ -1,0 +1,29 @@
+[
+  {
+    "id": "SSH_WEAK_CIPHERS",
+    "title": "SSH allows weak ciphers",
+    "severity": "high",
+    "category": "ssh",
+    "checkType": "agent_script",
+    "scriptId": "check_ssh_ciphers",
+    "recommendedRemediationId": "SSH_HARDEN_CONFIG"
+  },
+  {
+    "id": "OS_MISSING_SECURITY_UPDATES",
+    "title": "Operating system missing security updates",
+    "severity": "high",
+    "category": "os",
+    "checkType": "agent_script",
+    "scriptId": "check_os_updates",
+    "recommendedRemediationId": "OS_APPLY_SECURITY_UPDATES"
+  },
+  {
+    "id": "WEB_DIR_LISTING_ENABLED",
+    "title": "Web server directory listing is enabled",
+    "severity": "medium",
+    "category": "web",
+    "checkType": "agent_script",
+    "scriptId": "check_web_dir_listing",
+    "recommendedRemediationId": "WEB_DISABLE_DIR_LISTING"
+  }
+]

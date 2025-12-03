@@ -82,6 +82,9 @@ import addonRoutes from './addonRoutes.js';
 import cloudPodRoutes from './cloudPodRoutes.js';
 import adminDashboardRoutes from './adminDashboardRoutes.js';
 
+// TypeScript API Routes (Administration modules + new features)
+import tsApiRoutes from './ts-api.js';
+
 const router = express.Router();
 
 // Health check
@@ -257,6 +260,13 @@ router.use('/addons', addonRoutes);
 
 // Cloud Pods API (isolated container hosting)
 router.use('/cloud-pods', cloudPodRoutes);
+
+// ============================================
+// TYPESCRIPT API ROUTES
+// ============================================
+// Mount all TypeScript-based API routes (Administration, Ops, Security)
+// These include: /admin/*, /ops/*, /security/*, /guardian/*, /provisioning/*
+router.use('/', tsApiRoutes);
 
 export default router;
 

@@ -6,9 +6,7 @@
  * instead of reading raw database values or hardcoding thresholds.
  */
 
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '../config/database.js';
 
 export class SystemSettingsService {
   // Simple in-memory cache to reduce DB hits

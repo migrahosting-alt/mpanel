@@ -1,0 +1,29 @@
+[
+  {
+    "id": "SSH_HARDEN_CONFIG",
+    "title": "Harden SSH configuration",
+    "description": "Disable root login with password, enforce strong ciphers, and restrict authentication methods.",
+    "actionType": "apply_patch",
+    "scriptId": "remediate_ssh_hardening",
+    "requiresTenantApproval": true,
+    "requiresPlatformApproval": true
+  },
+  {
+    "id": "OS_APPLY_SECURITY_UPDATES",
+    "title": "Apply OS security updates",
+    "description": "Run package manager to apply security updates only, with reboot flag optional.",
+    "actionType": "apply_patch",
+    "scriptId": "remediate_os_updates",
+    "requiresTenantApproval": true,
+    "requiresPlatformApproval": true
+  },
+  {
+    "id": "WEB_DISABLE_DIR_LISTING",
+    "title": "Disable directory listing in web server",
+    "description": "Update web server configuration to disable directory listing on all virtual hosts.",
+    "actionType": "update_config",
+    "scriptId": "remediate_web_dir_listing",
+    "requiresTenantApproval": true,
+    "requiresPlatformApproval": false
+  }
+]

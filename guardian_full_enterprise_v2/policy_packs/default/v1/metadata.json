@@ -1,0 +1,10 @@
+{
+  "name": "default",
+  "version": "v1",
+  "description": "Default Guardian policy pack with baseline OS, SSH and web hardening checks.",
+  "environments": [
+    "staging",
+    "production"
+  ],
+  "createdBy": "Migra Guardian"
+}

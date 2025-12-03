@@ -3,7 +3,7 @@
  * AWS-style security groups with firewall rules applied to CloudPods
  */
 
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../config/database.js';
 import { CloudPodsAuditService, createAuditContext } from './cloudPodsAuditService';
 import type {
   SecurityGroupCreateInput,
@@ -11,8 +11,6 @@ import type {
   SecurityGroupRuleInput,
   CloudPodAuditContext,
 } from './cloudPodsEnterpriseTypes';
-
-const prisma = new PrismaClient();
 
 /**
  * List all security groups for a tenant

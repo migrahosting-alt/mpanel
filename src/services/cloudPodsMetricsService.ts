@@ -3,10 +3,8 @@
  * Usage metering and metrics collection for CloudPods
  */
 
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../config/database.js';
 import type { UsageSample, TenantUsageSummary } from './cloudPodsEnterpriseTypes';
-
-const prisma = new PrismaClient();
 
 interface ProxmoxMetrics {
   cpu: number;      // CPU usage percentage (0-100)

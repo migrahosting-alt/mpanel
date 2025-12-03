@@ -3,10 +3,8 @@
  * Records all CloudPods actions for compliance, debugging, and analytics
  */
 
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../config/database.js';
 import type { CloudPodAuditCategory, CloudPodAuditAction, CloudPodAuditContext } from './cloudPodsEnterpriseTypes';
-
-const prisma = new PrismaClient();
 
 export interface AuditLogParams {
   action: CloudPodAuditAction;

@@ -1,5 +1,9 @@
 import path from 'node:path';
+import { config as loadEnv } from 'dotenv';
 import { defineConfig } from 'prisma/config';
+
+// Ensure .env variables (DATABASE_URL, etc.) are loaded before Prisma inspects config
+loadEnv();
 
 export default defineConfig({
   earlyAccess: true,

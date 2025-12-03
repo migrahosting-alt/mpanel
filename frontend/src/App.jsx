@@ -44,7 +44,8 @@ import UserManagement from './pages/admin/UserManagement';
 import { CustomersPage } from './pages/CustomersPage';
 import UsersPage from './pages/UsersPage';
 import { DnsPage } from './pages/DnsPage';
-import GuardianManagement from './pages/GuardianManagement';
+import GuardianManagement from './pages/admin/GuardianManagement';
+import GuardianSOC from './pages/admin/GuardianSOC';
 
 // Enterprise Admin Modules
 import UsersManagement from './pages/admin/UsersManagement';
@@ -58,6 +59,7 @@ import SystemHealthPage from './pages/admin/SystemHealthPage';
 import JobsManagement from './pages/admin/JobsManagement';
 import AuditLog from './pages/admin/AuditLog';
 import SystemEvents from './pages/admin/SystemEvents';
+import ShieldManagement from './pages/admin/ShieldManagement';
 
 // Client portal
 import ClientLayout from './components/ClientLayout';
@@ -134,12 +136,14 @@ function App() {
           <Route path="/admin/provisioning" element={<ProtectedRoute><ProvisioningModule /></ProtectedRoute>} />
           <Route path="/admin/roles" element={<ProtectedRoute><RoleManagementPage /></ProtectedRoute>} />
           <Route path="/admin/guardian" element={<ProtectedRoute><GuardianManagement /></ProtectedRoute>} />
+          <Route path="/admin/guardian/soc" element={<ProtectedRoute><GuardianSOC /></ProtectedRoute>} />
           <Route path="/admin/cloudpods" element={<ProtectedRoute><CloudPodsManagement /></ProtectedRoute>} />
           <Route path="/admin/settings" element={<ProtectedRoute><SystemSettings /></ProtectedRoute>} />
           <Route path="/admin/system-health" element={<ProtectedRoute><SystemHealthPage /></ProtectedRoute>} />
           <Route path="/admin/jobs" element={<ProtectedRoute><JobsManagement /></ProtectedRoute>} />
           <Route path="/admin/audit" element={<ProtectedRoute><AuditLog /></ProtectedRoute>} />
           <Route path="/admin/system-events" element={<ProtectedRoute><SystemEvents /></ProtectedRoute>} />
+          <Route path="/admin/shield" element={<ProtectedRoute><ShieldManagement /></ProtectedRoute>} />
         </>
       )}
       

@@ -1,0 +1,18 @@
+{
+  "scanTypes": {
+    "agent_full": [
+      "SSH_WEAK_CIPHERS",
+      "OS_MISSING_SECURITY_UPDATES",
+      "WEB_DIR_LISTING_ENABLED"
+    ],
+    "config_drift": [
+      "SSH_WEAK_CIPHERS",
+      "WEB_DIR_LISTING_ENABLED"
+    ],
+    "quick_health": [
+      "OS_MISSING_SECURITY_UPDATES"
+    ]
+  },
+  "heartbeatIntervalSeconds": 60,
+  "maxConcurrentScansPerServer": 2
+}

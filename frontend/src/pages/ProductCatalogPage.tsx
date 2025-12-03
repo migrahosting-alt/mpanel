@@ -36,8 +36,11 @@ export default function ProductCatalogPage() {
       const response = await apiClient.get<Product[]>('/products');
       setProducts(Array.isArray(response) ? response : []);
     } catch (error) {
-      toast.error('Failed to load products');
-      console.error(error);
+      console.error('Failed to fetch products:', error);
+      // Only show error for real failures, not empty results
+      if (error && typeof error === 'object' && 'status' in error && error.status !== 404) {
+        toast.error('Failed to load products');
+      }
       setProducts([]);
     } finally {
       setLoading(false);
@@ -160,9 +163,11 @@ export default function ProductCatalogPage() {
         <div className="border-2 border-dashed rounded-xl p-12 text-center">
           <ShoppingCartIcon className="w-16 h-16 mx-auto text-slate-300 mb-4" />
           <h3 className="text-lg font-medium text-slate-900 mb-2">No products found</h3>
-          <p className="text-slate-500">
+          <p className="text-slate-500 mb-4">
             {selectedCategory === 'all'
-              ? 'No products available at the moment'
+              ? products.length === 0
+                ? 'No products available yet. If this is a new environment, run "npm run seed:products" on the server.'
+                : 'No products available at the moment'
               : `No products in the ${selectedCategory} category`}
           </p>
         </div>

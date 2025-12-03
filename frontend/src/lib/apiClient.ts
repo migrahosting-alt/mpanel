@@ -56,6 +56,16 @@ async function handle<T>(res: Response, options?: RequestOptions): Promise<T> {
         // ignore additional parsing errors
       }
     }
+    // Enterprise-grade: normalize common error statuses for clearer UX
+    if (res.status === 401 && (!message || /^HTTP\s*401/i.test(message))) {
+      message = 'Unauthorized: please login to access Guardian';
+    }
+    if (res.status === 403 && (!message || /^HTTP\s*403/i.test(message))) {
+      message = 'Forbidden: insufficient permissions';
+    }
+    if (res.status === 404 && (!message || /^HTTP\s*404/i.test(message))) {
+      message = 'Route not found';
+    }
     throw new Error(message);
   }
 
@@ -111,6 +121,20 @@ export const api = {
   async put<T>(path: string, body: any, options?: RequestOptions) {
     const res = await fetch(buildUrl(path, options?.params), {
       method: 'PUT',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(),
+        ...options?.headers
+      },
+      signal: options?.signal,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+    return handle<T>(res, options);
+  },
+  async patch<T>(path: string, body: any, options?: RequestOptions) {
+    const res = await fetch(buildUrl(path, options?.params), {
+      method: 'PATCH',
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',

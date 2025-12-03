@@ -49,11 +49,14 @@ export default function DatabasesPage() {
   const fetchDatabases = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get<{ services: Database[] }>('/services?type=database');
-      setDatabases(response.services);
-    } catch (error) {
-      toast.error('Failed to load databases');
-      console.error(error);
+      const response = await apiClient.get<{ services: Database[] }>('/services?type=database');\n      setDatabases(response.services);
+    } catch (error: any) {
+      console.error('Failed to fetch databases:', error);
+      // Don't show error toast for features not yet implemented
+      if (error?.response?.status !== 404 && error?.response?.status !== 501) {
+        toast.error('Failed to load databases');
+      }
+      setDatabases([]);
     } finally {
       setLoading(false);
     }
@@ -185,22 +188,19 @@ export default function DatabasesPage() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-violet-600"></div>
+        <div className=\"flex items-center justify-center py-12\">
+          <div className=\"animate-spin rounded-full h-8 w-8 border-b-2 border-violet-600\"></div>
         </div>
       ) : databases.length === 0 ? (
-        <div className="border-2 border-dashed rounded-xl p-12 text-center">
-          <CircleStackIcon className="w-16 h-16 mx-auto text-slate-300 mb-4" />
-          <h3 className="text-lg font-medium text-slate-900 mb-2">No databases yet</h3>
-          <p className="text-slate-500 mb-4">
-            Create your first database to store your application data
+        <div className=\"border-2 border-dashed rounded-xl p-12 text-center\">
+          <CircleStackIcon className=\"w-16 h-16 mx-auto text-slate-300 mb-4\" />
+          <h3 className=\"text-lg font-medium text-slate-900 mb-2\">Database Management Coming Soon</h3>
+          <p className=\"text-slate-500 mb-4\">
+            Database provisioning and management is not enabled yet in your environment.
           </p>
-          <button
-            onClick={openCreate}
-            className="px-4 py-2 rounded-xl bg-violet-600 text-white font-medium hover:bg-violet-700"
-          >
-            Create Database
-          </button>
+          <p className=\"text-sm text-slate-500\">
+            This module will be available in a future update.
+          </p>
         </div>
       ) : (
         <div className="grid gap-4">

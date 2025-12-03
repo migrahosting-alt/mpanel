@@ -3,11 +3,9 @@
  * Health monitoring and auto-healing for CloudPods
  */
 
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../config/database.js';
 import { CloudPodsAuditService } from './cloudPodsAuditService';
 import type { HealthStatus, HealthCheckResult, CloudPodAuditContext } from './cloudPodsEnterpriseTypes';
-
-const prisma = new PrismaClient();
 
 // Auto-heal after this many consecutive failures
 const AUTO_HEAL_FAILURE_THRESHOLD = 3;

@@ -56,6 +56,7 @@ const envSchema = z.object({
   MARKETING_WEBHOOK_SECRET: z.string().optional(),
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  GUARDIAN_AGENT_SHARED_SECRET: z.string().optional(),
   
   // Application
   APP_URL: z.string().url().default('https://mpanel.migrahosting.com'),

@@ -54,7 +54,11 @@ export default function SubscriptionsPage() {
       setSubscriptions(data.subscriptions || []);
     } catch (error) {
       console.error('Failed to fetch subscriptions:', error);
-      toast.error('Failed to load subscriptions');
+      // Only show error if it's not a 404 or empty response
+      if (error && typeof error === 'object' && 'status' in error && error.status !== 404) {
+        toast.error('Failed to load subscriptions');
+      }
+      setSubscriptions([]);
     } finally {
       setLoading(false);
     }
@@ -66,7 +70,11 @@ export default function SubscriptionsPage() {
       setPlans(data.plans || []);
     } catch (error) {
       console.error('Failed to fetch plans:', error);
-      toast.error('Failed to load plans');
+      // Only show error if it's not a 404 or empty response
+      if (error && typeof error === 'object' && 'status' in error && error.status !== 404) {
+        toast.error('Failed to load plans');
+      }
+      setPlans([]);
     }
   };
 
@@ -160,7 +168,8 @@ export default function SubscriptionsPage() {
       ) : subscriptions.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-xl border border-dashed border-slate-300">
           <SparklesIcon className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-          <p className="text-slate-500 mb-4">No active subscriptions</p>
+          <p className="text-slate-900 font-medium mb-2">No subscriptions yet</p>
+          <p className="text-slate-500 mb-4 text-sm">Subscriptions appear here after an order is completed and paid.</p>
           <button
             onClick={() => setShowPlans(true)}
             className="px-6 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 font-medium"

@@ -359,6 +359,20 @@ export const CLOUD_POD_PLANS: Record<CloudPodPlanCode, CloudPodPlanConfig> = {
   },
 };
 
+export const CLOUD_POD_PLANS_LIST = Object.values(CLOUD_POD_PLANS) as CloudPodPlanConfig[];
+
+export function getAllPodPlanCodes(): CloudPodPlanCode[] {
+  return Object.keys(CLOUD_POD_PLANS) as CloudPodPlanCode[];
+}
+
+export function getEnabledPodPlans(): CloudPodPlanConfig[] {
+  return CLOUD_POD_PLANS_LIST.filter(plan => plan.enabled);
+}
+
+export function isValidPodPlanCode(code: string): code is CloudPodPlanCode {
+  return Boolean(CLOUD_POD_PLANS[code as CloudPodPlanCode]);
+}
+
 // ============================================================================
 // 6) Helper lookups
 // ============================================================================
@@ -379,6 +393,91 @@ export function getPodEmailPlan(code: EmailPlanCode): EmailPlanConfig {
   const plan = POD_EMAIL_PLANS[code];
   if (!plan) throw new Error(`Unknown Pod email plan: ${code}`);
   return plan;
+}
+
+export function buildPublicPlans() {
+  return getEnabledPodPlans().map(plan => {
+    const bandwidth = plan.bandwidthTb
+      ? `${plan.bandwidthTb} TB/mo`
+      : 'Unspecified bandwidth';
+
+    return {
+      code: plan.code,
+      name: plan.name,
+      description: plan.description,
+      pricePerMonth: plan.price,
+      billingPeriod: plan.billingPeriod,
+      cpu: `${plan.vcpu} vCPU`,
+      ram: `${plan.ramGb} GB RAM`,
+      storage: `${plan.diskGb} GB NVMe storage`,
+      bandwidth,
+      stack: plan.stack,
+      includes: {
+        backups: plan.defaultBackupTier !== 'BACKUP_NONE',
+        email: plan.emailPlan !== 'EMAIL_NONE',
+      },
+    };
+  });
+}
+
+export function buildCompareTable() {
+  const enabledPlans = getEnabledPodPlans();
+  if (enabledPlans.length === 0) {
+    return [];
+  }
+
+  const formatCurrency = (value: number) => `$${value.toFixed(2)}`;
+  const formatBandwidth = (plan: CloudPodPlanConfig) =>
+    plan.bandwidthTb ? `${plan.bandwidthTb} TB/mo` : 'Unspecified';
+
+  const headerRow = {
+    feature: 'Plan',
+    ...enabledPlans.reduce<Record<string, string>>((acc, plan) => {
+      acc[plan.code] = plan.name;
+      return acc;
+    }, {}),
+  };
+
+  const rows = [
+    headerRow,
+    {
+      feature: 'Monthly price',
+      ...enabledPlans.reduce<Record<string, string>>((acc, plan) => {
+        acc[plan.code] = formatCurrency(plan.price);
+        return acc;
+      }, {}),
+    },
+    {
+      feature: 'CPU',
+      ...enabledPlans.reduce<Record<string, string>>((acc, plan) => {
+        acc[plan.code] = `${plan.vcpu} vCPU`;
+        return acc;
+      }, {}),
+    },
+    {
+      feature: 'RAM',
+      ...enabledPlans.reduce<Record<string, string>>((acc, plan) => {
+        acc[plan.code] = `${plan.ramGb} GB`;
+        return acc;
+      }, {}),
+    },
+    {
+      feature: 'Storage',
+      ...enabledPlans.reduce<Record<string, string>>((acc, plan) => {
+        acc[plan.code] = `${plan.diskGb} GB`; 
+        return acc;
+      }, {}),
+    },
+    {
+      feature: 'Bandwidth',
+      ...enabledPlans.reduce<Record<string, string>>((acc, plan) => {
+        acc[plan.code] = formatBandwidth(plan);
+        return acc;
+      }, {}),
+    },
+  ];
+
+  return rows;
 }
 
 // ============================================================================
@@ -517,6 +616,39 @@ export function buildCloudPodProvisioningIntent(
   };
 
   return intent;
+}
+
+export function calculateBackupPath(
+  podId: string,
+  backupTierCode: BackupTierCode,
+  date: Date = new Date(),
+): string {
+  const tier = getPodBackupTier(backupTierCode);
+  if (!tier.pathPattern) {
+    return '';
+  }
+
+  const dateStr = date.toISOString().split('T')[0];
+  return tier.pathPattern
+    .replace('{root}', CLOUD_INFRA.backupRootPath)
+    .replace('{podId}', podId)
+    .replace('{date}', dateStr);
+}
+
+export function getPodResourcesSummary(planCode: CloudPodPlanCode) {
+  const plan = getPodPlan(planCode);
+  return {
+    vcpu: `${plan.vcpu} vCPU`,
+    ram: `${plan.ramGb} GB RAM`,
+    disk: `${plan.diskGb} GB NVMe SSD`,
+    bandwidth: plan.bandwidthTb ? `${plan.bandwidthTb} TB/mo` : 'Unspecified',
+    webServer: plan.stack.webServer,
+    php: plan.stack.phpEnabled ? 'PHP enabled' : 'No PHP',
+    database: plan.stack.databaseEnabled ? 'MySQL/MariaDB enabled' : 'No database',
+    nodejs: plan.stack.nodeJsEnabled ? 'Node.js enabled' : 'No Node.js',
+    ssh: plan.stack.sshAccess ? 'SSH access' : 'No SSH access',
+    sftp: plan.stack.sftpAccess ? 'SFTP access' : 'No SFTP access',
+  };
 }
 
 // ============================================================================

@@ -56,6 +56,8 @@ export default function SSLManagement() {
       setDomains(sslStatuses);
     } catch (error) {
       console.error('Error loading SSL status:', error);
+      // Set empty array on error
+      setDomains([]);
     } finally {
       setLoading(false);
     }
@@ -150,8 +152,13 @@ export default function SSLManagement() {
           ) : domains.length === 0 ? (
             <div className="rounded-2xl border border-white/10 bg-white/5 p-12 text-center">
               <Shield className="mx-auto mb-4 h-16 w-16 text-white/30" />
-              <h3 className="mb-2 text-xl font-semibold text-white">No Domains Found</h3>
-              <p className="text-white/70">Add a domain to your hosting plan to install SSL certificates</p>
+              <h3 className="mb-2 text-xl font-semibold text-white">SSL Management Coming Soon</h3>
+              <p className="text-white/70 mb-2">
+                SSL certificate management is not enabled yet in your environment.
+              </p>
+              <p className="text-white/50 text-sm">
+                This module will be available in a future update.
+              </p>
             </div>
           ) : (
             <div className="space-y-4">

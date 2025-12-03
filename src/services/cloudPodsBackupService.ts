@@ -3,11 +3,9 @@
  * Scheduled backups and snapshot management for CloudPods
  */
 
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../config/database.js';
 import { CloudPodsAuditService } from './cloudPodsAuditService';
 import type { BackupPolicyInput, BackupResult, BackupType, CloudPodAuditContext } from './cloudPodsEnterpriseTypes';
-
-const prisma = new PrismaClient();
 
 /**
  * List backup policies for a pod

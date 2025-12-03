@@ -1,5 +1,8 @@
-import { prisma } from '../../config/database.js';
 import logger from '../../config/logger.js';
+
+// Mock in-memory storage until RBAC tables are added to Prisma schema
+const mockRoles: any[] = [];
+const mockUserRoles: any[] = [];
 
 // Enterprise permissions catalog
 const PERMISSIONS_CATALOG = [
@@ -44,70 +47,52 @@ interface CreateRoleParams {
 export async function listRoles(params: ListRolesParams) {
   const { scope, search } = params;
 
-  const where: any = {};
+  let filtered = [...mockRoles];
 
   if (scope) {
-    where.scope = scope;
+    filtered = filtered.filter((r) => r.scope === scope);
   }
 
   if (search) {
-    where.OR = [
-      { name: { contains: search, mode: 'insensitive' } },
-      { description: { contains: search, mode: 'insensitive' } },
-    ];
+    filtered = filtered.filter(
+      (r) =>
+        r.name.toLowerCase().includes(search.toLowerCase()) ||
+        (r.description && r.description.toLowerCase().includes(search.toLowerCase()))
+    );
   }
 
-  const roles = await prisma.role.findMany({
-    where,
-    orderBy: { name: 'asc' },
-    include: {
-      _count: {
-        select: {
-          userRoles: true,
-        },
-      },
-    },
-  });
-
-  return roles;
+  return filtered;
 }
 
 export async function getRole(id: string) {
-  const role = await prisma.role.findUnique({
-    where: { id },
-    include: {
-      userRoles: {
-        include: {
-          user: {
-            select: {
-              id: true,
-              email: true,
-              fullName: true,
-            },
-          },
-        },
-      },
-    },
-  });
+  const role = mockRoles.find((r) => r.id === id);
 
   if (!role) {
     throw new Error('Role not found');
   }
 
-  return role;
+  const users = mockUserRoles.filter((ur) => ur.roleId === id).map((ur) => ur.user);
+
+  return {
+    ...role,
+    userRoles: users.map((user) => ({ user })),
+  };
 }
 
 export async function createRole(params: CreateRoleParams) {
   const { name, description, scope, permissions } = params;
 
-  const role = await prisma.role.create({
-    data: {
-      name,
-      description,
-      scope,
-      permissions: JSON.stringify(permissions),
-    },
-  });
+  const role = {
+    id: `role_${Date.now()}`,
+    name,
+    description,
+    scope,
+    permissions: JSON.stringify(permissions),
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  mockRoles.push(role);
 
   logger.info('Role created', { roleId: role.id, name });
 
@@ -115,33 +100,39 @@ export async function createRole(params: CreateRoleParams) {
 }
 
 export async function updateRole(id: string, data: any) {
-  const role = await prisma.role.update({
-    where: { id },
-    data: {
-      name: data.name,
-      description: data.description,
-      permissions: data.permissions ? JSON.stringify(data.permissions) : undefined,
-    },
-  });
+  const index = mockRoles.findIndex((r) => r.id === id);
+
+  if (index === -1) {
+    throw new Error('Role not found');
+  }
+
+  mockRoles[index] = {
+    ...mockRoles[index],
+    name: data.name ?? mockRoles[index].name,
+    description: data.description ?? mockRoles[index].description,
+    permissions: data.permissions ? JSON.stringify(data.permissions) : mockRoles[index].permissions,
+    updatedAt: new Date(),
+  };
 
   logger.info('Role updated', { roleId: id });
 
-  return role;
+  return mockRoles[index];
 }
 
 export async function deleteRole(id: string) {
-  // Check if role has users
-  const userCount = await prisma.userRole.count({
-    where: { roleId: id },
-  });
+  const userCount = mockUserRoles.filter((ur) => ur.roleId === id).length;
 
   if (userCount > 0) {
     throw new Error('Cannot delete role with assigned users');
   }
 
-  await prisma.role.delete({
-    where: { id },
-  });
+  const index = mockRoles.findIndex((r) => r.id === id);
+
+  if (index === -1) {
+    throw new Error('Role not found');
+  }
+
+  mockRoles.splice(index, 1);
 
   logger.warn('Role deleted', { roleId: id });
 }
@@ -151,22 +142,9 @@ export async function listPermissions() {
 }
 
 export async function getRoleUsers(roleId: string) {
-  const userRoles = await prisma.userRole.findMany({
-    where: { roleId },
-    include: {
-      user: {
-        select: {
-          id: true,
-          email: true,
-          fullName: true,
-          status: true,
-          lastLoginAt: true,
-        },
-      },
-    },
-  });
+  const userRoles = mockUserRoles.filter((ur) => ur.roleId === roleId);
 
-  return userRoles.map((ur) => ur.user);
+  return userRoles.map((ur: any) => ur.user);
 }
 
 export default {

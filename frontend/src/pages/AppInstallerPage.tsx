@@ -58,10 +58,16 @@ export default function AppInstallerPage() {
         apiClient.get('/app-installer/templates'),
         apiClient.get('/app-installer'),
       ]);
-      setTemplates(templatesRes.data.templates);
-      setInstalledApps(appsRes.data.apps);
-    } catch (error) {
-      toast.error('Failed to fetch data');
+      setTemplates(templatesRes.data.templates || []);
+      setInstalledApps(appsRes.data.apps || []);
+    } catch (error: any) {
+      console.error('Failed to fetch app installer data:', error);
+      // Don't show error toast for features not yet implemented
+      if (error?.response?.status !== 404 && error?.response?.status !== 501) {
+        toast.error('Failed to fetch data');
+      }
+      setTemplates([]);
+      setInstalledApps([]);
     } finally {
       setLoading(false);
     }
@@ -155,6 +161,30 @@ export default function AppInstallerPage() {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  // Show "Coming Soon" state if no templates available
+  if (templates.length === 0 && installedApps.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Application Installer</h1>
+          <p className="text-gray-600 mt-1">One-click installation for popular applications</p>
+        </div>
+        <div className="text-center py-16 bg-white rounded-xl border border-slate-200">
+          <RocketLaunchIcon className="h-16 w-16 text-slate-300 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-slate-900 mb-2">
+            App Installer Coming Soon
+          </h3>
+          <p className="text-slate-600 mb-4 max-w-md mx-auto">
+            One-click application installation is not enabled yet in your environment.
+          </p>
+          <p className="text-sm text-slate-500">
+            This module will be available in a future update.
+          </p>
+        </div>
       </div>
     );
   }

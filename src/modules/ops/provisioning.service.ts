@@ -7,6 +7,7 @@ const KNOWN_QUEUES = [
   'guardian-security',
   'email-notifications',
   'billing-tasks',
+  'provisioning', // Main provisioning queue
 ];
 
 interface ListJobsParams {
@@ -21,37 +22,37 @@ export async function listJobs(params: ListJobsParams) {
 
   const where: any = {};
 
-  if (queue) {
-    where.queueName = queue;
-  }
-
   if (status) {
-    where.status = status;
+    where.status = status.toLowerCase();
   }
 
-  // Fetch from ProvisioningTask table (CloudPods jobs)
+  if (queue && queue !== 'all') {
+    // Filter by job type as a proxy for queue
+    where.type = { contains: queue };
+  }
+
+  // Fetch from Job table
   const [data, total] = await Promise.all([
-    prisma.provisioningTask.findMany({
+    prisma.job.findMany({
       where,
       skip: (page - 1) * pageSize,
       take: pageSize,
       orderBy: { createdAt: 'desc' },
       include: {
-        cloudPod: {
+        tenant: {
           select: {
             id: true,
             name: true,
-            tenant: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
+          },
+        },
+        order: {
+          select: {
+            id: true,
           },
         },
       },
     }),
-    prisma.provisioningTask.count({ where }),
+    prisma.job.count({ where }),
   ]);
 
   return {
@@ -66,19 +67,18 @@ export async function listJobs(params: ListJobsParams) {
 }
 
 export async function getJob(id: string) {
-  const job = await prisma.provisioningTask.findUnique({
+  const job = await prisma.job.findUnique({
     where: { id },
     include: {
-      cloudPod: {
+      tenant: {
         select: {
           id: true,
           name: true,
-          tenant: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
+        },
+      },
+      order: {
+        select: {
+          id: true,
         },
       },
     },
@@ -88,58 +88,39 @@ export async function getJob(id: string) {
 }
 
 export async function getQueueStats() {
-  // Get stats for all known queues
-  const stats = await Promise.all(
-    KNOWN_QUEUES.map(async (queueName) => {
-      const [waiting, active, completed, failed] = await Promise.all([
-        prisma.provisioningTask.count({
-          where: { queueName, status: 'PENDING' },
-        }),
-        prisma.provisioningTask.count({
-          where: { queueName, status: 'IN_PROGRESS' },
-        }),
-        prisma.provisioningTask.count({
-          where: { queueName, status: 'COMPLETED' },
-        }),
-        prisma.provisioningTask.count({
-          where: { queueName, status: 'FAILED' },
-        }),
-      ]);
+  // Get stats by job status
+  const [pending, running, success, failed, total] = await Promise.all([
+    prisma.job.count({ where: { status: 'pending' } }),
+    prisma.job.count({ where: { status: 'running' } }),
+    prisma.job.count({ where: { status: 'success' } }),
+    prisma.job.count({ where: { status: 'failed' } }),
+    prisma.job.count(),
+  ]);
 
-      return {
-        name: queueName,
-        waiting,
-        active,
-        completed,
-        failed,
-        total: waiting + active + completed + failed,
-      };
-    })
-  );
-
-  return stats;
+  return KNOWN_QUEUES.map((name) => ({
+    name,
+    waiting: name === 'provisioning' ? pending : 0,
+    active: name === 'provisioning' ? running : 0,
+    completed: name === 'provisioning' ? success : 0,
+    failed: name === 'provisioning' ? failed : 0,
+    total: name === 'provisioning' ? total : 0,
+  }));
 }
 
 export async function getQueueDetails(queueName: string) {
-  const [waiting, active, completed, failed, recentJobs] = await Promise.all([
-    prisma.provisioningTask.count({
-      where: { queueName, status: 'PENDING' },
-    }),
-    prisma.provisioningTask.count({
-      where: { queueName, status: 'IN_PROGRESS' },
-    }),
-    prisma.provisioningTask.count({
-      where: { queueName, status: 'COMPLETED' },
-    }),
-    prisma.provisioningTask.count({
-      where: { queueName, status: 'FAILED' },
-    }),
-    prisma.provisioningTask.findMany({
-      where: { queueName },
+  const where = queueName === 'all' ? {} : { type: { contains: queueName } };
+
+  const [pending, running, success, failed, recentJobs] = await Promise.all([
+    prisma.job.count({ where: { ...where, status: 'pending' } }),
+    prisma.job.count({ where: { ...where, status: 'running' } }),
+    prisma.job.count({ where: { ...where, status: 'success' } }),
+    prisma.job.count({ where: { ...where, status: 'failed' } }),
+    prisma.job.findMany({
+      where,
       take: 10,
       orderBy: { createdAt: 'desc' },
       include: {
-        cloudPod: {
+        tenant: {
           select: {
             id: true,
             name: true,
@@ -147,6 +128,7 @@ export async function getQueueDetails(queueName: string) {
         },
       },
     }),
+  ]);
   ]);
 
   return {
@@ -169,16 +151,18 @@ export async function retryJob(id: string) {
     throw new Error('Job not found');
   }
 
-  if (job.status !== 'FAILED') {
+  if (job.status !== 'failed') {
     throw new Error('Only failed jobs can be retried');
   }
 
-  const updated = await prisma.provisioningTask.update({
+  const updated = await prisma.job.update({
     where: { id },
     data: {
-      status: 'PENDING',
-      error: null,
-      attemptedAt: null,
+      status: 'pending',
+      lastError: null,
+      attempts: 0,
+      startedAt: null,
+      completedAt: null,
     },
   });
 
@@ -188,21 +172,22 @@ export async function retryJob(id: string) {
 }
 
 export async function cancelJob(id: string) {
-  const job = await prisma.provisioningTask.findUnique({ where: { id } });
+  const job = await prisma.job.findUnique({ where: { id } });
 
   if (!job) {
     throw new Error('Job not found');
   }
 
-  if (job.status === 'COMPLETED') {
-    throw new Error('Cannot cancel completed job');
+  if (job.status === 'success' || job.status === 'failed') {
+    throw new Error('Cannot cancel completed jobs');
   }
 
-  const updated = await prisma.provisioningTask.update({
+  const updated = await prisma.job.update({
     where: { id },
     data: {
-      status: 'FAILED',
-      error: 'Cancelled by administrator',
+      status: 'failed',
+      lastError: 'Cancelled by administrator',
+      completedAt: new Date(),
     },
   });
 

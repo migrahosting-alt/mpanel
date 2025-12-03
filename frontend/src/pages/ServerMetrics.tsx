@@ -106,7 +106,13 @@ export default function ServerMetrics() {
       }
     } catch (error: any) {
       console.error('Error fetching agents:', error);
-      toast.error('Failed to load agents');
+      // Don't show error toast for features not yet implemented
+      if (error?.response?.status !== 404 && error?.response?.status !== 501) {
+        toast.error('Failed to load agents');
+      }
+      setAgents([]);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -567,9 +573,16 @@ export default function ServerMetrics() {
 
       {/* No Metrics Message */}
       {!selectedAgent && agents.length === 0 && (
-        <div className="text-center py-12">
-          <p className="text-gray-600 dark:text-gray-400">
-            No servers available. Please install and configure a server agent.
+        <div className="text-center py-12 bg-white rounded-xl border border-slate-200">
+          <ChartBarIcon className="h-16 w-16 text-slate-300 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-slate-900 mb-2">
+            Server Metrics Coming Soon
+          </h3>
+          <p className="text-slate-600 mb-4">
+            Server monitoring with MigraAgent is not enabled yet in your environment.
+          </p>
+          <p className="text-sm text-slate-500">
+            This feature will be available once server agents are installed and configured.
           </p>
         </div>
       )}

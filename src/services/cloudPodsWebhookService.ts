@@ -3,7 +3,7 @@
  * Event delivery system for CloudPods lifecycle events
  */
 
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../config/database.js';
 import crypto from 'crypto';
 import type {
   CloudPodWebhookEventType,
@@ -12,8 +12,6 @@ import type {
   WebhookDeliveryResult,
   WebhookDeliveryStatus,
 } from './cloudPodsEnterpriseTypes';
-
-const prisma = new PrismaClient();
 
 // Webhook delivery settings
 const MAX_ATTEMPTS = 8;

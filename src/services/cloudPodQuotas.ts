@@ -8,6 +8,61 @@
  */
 
 import { prisma } from '../config/database.js';
+import logger from '../config/logger.js';
+
+const ACTIVE_STATUSES = ['provisioning', 'active'];
+
+export const DEFAULT_TENANT_QUOTA = {
+  max_pods: 2,
+  max_cpu_cores: 4,
+  max_memory_mb: 8192,
+  max_disk_gb: 200,
+};
+
+export interface TenantQuotaLimits {
+  max_pods: number;
+  max_cpu_cores: number;
+  max_memory_mb: number;
+  max_disk_gb: number;
+}
+
+export interface TenantQuotaUsage {
+  pods: number;
+  cpuCores: number;
+  memoryMb: number;
+  diskGb: number;
+}
+
+export interface TenantQuotaCheckRequest {
+  tenantId: string;
+  requested: {
+    pods?: number;
+    cpuCores?: number;
+    memoryMb?: number;
+    diskGb?: number;
+  };
+}
+
+export interface TenantQuotaCheckResult {
+  allowed: boolean;
+  message?: string;
+  details: {
+    max_pods: number;
+    current_pods: number;
+    requested_pods: number;
+    max_cpu_cores: number;
+    current_cpu_cores: number;
+    requested_cpu_cores: number;
+    max_memory_mb: number;
+    current_memory_mb: number;
+    requested_memory_mb: number;
+    max_disk_gb: number;
+    current_disk_gb: number;
+    requested_disk_gb: number;
+    error_field?: string;
+    error_code?: string;
+  };
+}
 
 export interface QuotaCheckResult {
   allowed: boolean;
@@ -60,6 +115,133 @@ export async function getOrCreateQuota(tenantId: string) {
   return quota;
 }
 
+export async function getTenantQuota(tenantId: string): Promise<TenantQuotaLimits> {
+  if (!tenantId) {
+    throw new Error('getTenantQuota: tenantId is required');
+  }
+
+  const quota = await prisma.cloudPodQuota.findUnique({
+    where: { tenantId },
+  });
+
+  if (!quota) {
+    logger.info(`[cloudPodQuotas] No quota row for tenant ${tenantId}, using defaults`);
+    return { ...DEFAULT_TENANT_QUOTA };
+  }
+
+  return {
+    max_pods: quota.maxCloudPods ?? DEFAULT_TENANT_QUOTA.max_pods,
+    max_cpu_cores: quota.maxCpuCores ?? DEFAULT_TENANT_QUOTA.max_cpu_cores,
+    max_memory_mb: quota.maxRamMb ?? DEFAULT_TENANT_QUOTA.max_memory_mb,
+    max_disk_gb: quota.maxDiskGb ?? DEFAULT_TENANT_QUOTA.max_disk_gb,
+  };
+}
+
+export async function getTenantUsage(tenantId: string): Promise<TenantQuotaUsage> {
+  if (!tenantId) {
+    throw new Error('getTenantUsage: tenantId is required');
+  }
+
+  const pods = await prisma.cloudPod.findMany({
+    where: {
+      tenantId,
+      status: { in: ACTIVE_STATUSES },
+      deletedAt: null,
+    },
+    select: {
+      cores: true,
+      memoryMb: true,
+      diskGb: true,
+    },
+  });
+
+  return pods.reduce<TenantQuotaUsage>(
+    (acc, pod) => ({
+      pods: acc.pods + 1,
+      cpuCores: acc.cpuCores + Number(pod.cores || 0),
+      memoryMb: acc.memoryMb + Number(pod.memoryMb || 0),
+      diskGb: acc.diskGb + Number(pod.diskGb || 0),
+    }),
+    { pods: 0, cpuCores: 0, memoryMb: 0, diskGb: 0 }
+  );
+}
+
+export async function checkTenantQuota(
+  params: TenantQuotaCheckRequest
+): Promise<TenantQuotaCheckResult> {
+  const { tenantId, requested } = params;
+
+  if (!tenantId) {
+    throw new Error('checkTenantQuota: tenantId is required');
+  }
+
+  if (!requested) {
+    throw new Error('checkTenantQuota: requested resources are required');
+  }
+
+  const reqPods = Number(requested.pods || 0);
+  const reqCpu = Number(requested.cpuCores || 0);
+  const reqMem = Number(requested.memoryMb || 0);
+  const reqDisk = Number(requested.diskGb || 0);
+
+  const limits = await getTenantQuota(tenantId);
+  const usage = await getTenantUsage(tenantId);
+
+  const result: TenantQuotaCheckResult = {
+    allowed: true,
+    message: '',
+    details: {
+      max_pods: limits.max_pods,
+      current_pods: usage.pods,
+      requested_pods: reqPods,
+      max_cpu_cores: limits.max_cpu_cores,
+      current_cpu_cores: usage.cpuCores,
+      requested_cpu_cores: reqCpu,
+      max_memory_mb: limits.max_memory_mb,
+      current_memory_mb: usage.memoryMb,
+      requested_memory_mb: reqMem,
+      max_disk_gb: limits.max_disk_gb,
+      current_disk_gb: usage.diskGb,
+      requested_disk_gb: reqDisk,
+    },
+  };
+
+  const deny = (field: string, code: string, msg: string) => {
+    result.allowed = false;
+    result.message = msg;
+    result.details.error_field = field;
+    result.details.error_code = code;
+  };
+
+  if (limits.max_pods >= 0 && usage.pods + reqPods > limits.max_pods) {
+    deny('pods', 'MAX_PODS_EXCEEDED', 'You have reached the maximum number of CloudPods for your account.');
+    return result;
+  }
+
+  if (limits.max_cpu_cores >= 0 && usage.cpuCores + reqCpu > limits.max_cpu_cores) {
+    deny('cpu_cores', 'MAX_CPU_EXCEEDED', 'You do not have enough CPU quota to create or scale this CloudPod.');
+    return result;
+  }
+
+  if (limits.max_memory_mb >= 0 && usage.memoryMb + reqMem > limits.max_memory_mb) {
+    deny('memory_mb', 'MAX_MEMORY_EXCEEDED', 'You do not have enough RAM quota to create or scale this CloudPod.');
+    return result;
+  }
+
+  if (limits.max_disk_gb >= 0 && usage.diskGb + reqDisk > limits.max_disk_gb) {
+    deny('disk_gb', 'MAX_DISK_EXCEEDED', 'You do not have enough disk quota to create or scale this CloudPod.');
+    return result;
+  }
+
+  logger.info(`[cloudPodQuotas] Quota check passed for tenant ${tenantId}`, {
+    limits,
+    usage,
+    requested: { pods: reqPods, cpuCores: reqCpu, memoryMb: reqMem, diskGb: reqDisk },
+  });
+
+  return result;
+}
+
 /**
  * Check if tenant has capacity for a new CloudPod
  */
@@ -69,21 +251,30 @@ export async function checkCreateCapacity(
   ramMb: number,
   diskGb: number = 8
 ): Promise<QuotaCheckResult> {
-  const quota = await getOrCreateQuota(tenantId);
+  const result = await checkTenantQuota({
+    tenantId,
+    requested: {
+      pods: 1,
+      cpuCores: cores,
+      memoryMb: ramMb,
+      diskGb,
+    },
+  });
 
-  const result: QuotaCheckResult = {
-    allowed: true,
+  return {
+    allowed: result.allowed,
+    reason: result.message,
     current: {
-      cloudPods: quota.usedCloudPods,
-      cpuCores: quota.usedCpuCores,
-      ramMb: quota.usedRamMb,
-      diskGb: quota.usedDiskGb,
+      cloudPods: result.details.current_pods,
+      cpuCores: result.details.current_cpu_cores,
+      ramMb: result.details.current_memory_mb,
+      diskGb: result.details.current_disk_gb,
     },
     limits: {
-      maxCloudPods: quota.maxCloudPods,
-      maxCpuCores: quota.maxCpuCores,
-      maxRamMb: quota.maxRamMb,
-      maxDiskGb: quota.maxDiskGb,
+      maxCloudPods: result.details.max_pods,
+      maxCpuCores: result.details.max_cpu_cores,
+      maxRamMb: result.details.max_memory_mb,
+      maxDiskGb: result.details.max_disk_gb,
     },
     requested: {
       cpuCores: cores,
@@ -91,33 +282,6 @@ export async function checkCreateCapacity(
       diskGb,
     },
   };
-
-  // Check each limit
-  if (quota.usedCloudPods + 1 > quota.maxCloudPods) {
-    result.allowed = false;
-    result.reason = `CloudPod limit reached: ${quota.usedCloudPods}/${quota.maxCloudPods}`;
-    return result;
-  }
-
-  if (quota.usedCpuCores + cores > quota.maxCpuCores) {
-    result.allowed = false;
-    result.reason = `CPU cores limit would be exceeded: ${quota.usedCpuCores + cores}/${quota.maxCpuCores}`;
-    return result;
-  }
-
-  if (quota.usedRamMb + ramMb > quota.maxRamMb) {
-    result.allowed = false;
-    result.reason = `RAM limit would be exceeded: ${quota.usedRamMb + ramMb}/${quota.maxRamMb} MB`;
-    return result;
-  }
-
-  if (quota.usedDiskGb + diskGb > quota.maxDiskGb) {
-    result.allowed = false;
-    result.reason = `Disk limit would be exceeded: ${quota.usedDiskGb + diskGb}/${quota.maxDiskGb} GB`;
-    return result;
-  }
-
-  return result;
 }
 
 /**
@@ -130,25 +294,33 @@ export async function checkScaleCapacity(
   newCores: number,
   newRamMb: number
 ): Promise<QuotaCheckResult> {
-  const quota = await getOrCreateQuota(tenantId);
+  const coresDelta = Math.max(0, newCores - currentCores);
+  const ramDelta = Math.max(0, newRamMb - currentRamMb);
 
-  // Calculate delta
-  const coresDelta = newCores - currentCores;
-  const ramDelta = newRamMb - currentRamMb;
+  const result = await checkTenantQuota({
+    tenantId,
+    requested: {
+      pods: 0,
+      cpuCores: coresDelta,
+      memoryMb: ramDelta,
+      diskGb: 0,
+    },
+  });
 
-  const result: QuotaCheckResult = {
-    allowed: true,
+  return {
+    allowed: result.allowed,
+    reason: result.message,
     current: {
-      cloudPods: quota.usedCloudPods,
-      cpuCores: quota.usedCpuCores,
-      ramMb: quota.usedRamMb,
-      diskGb: quota.usedDiskGb,
+      cloudPods: result.details.current_pods,
+      cpuCores: result.details.current_cpu_cores,
+      ramMb: result.details.current_memory_mb,
+      diskGb: result.details.current_disk_gb,
     },
     limits: {
-      maxCloudPods: quota.maxCloudPods,
-      maxCpuCores: quota.maxCpuCores,
-      maxRamMb: quota.maxRamMb,
-      maxDiskGb: quota.maxDiskGb,
+      maxCloudPods: result.details.max_pods,
+      maxCpuCores: result.details.max_cpu_cores,
+      maxRamMb: result.details.max_memory_mb,
+      maxDiskGb: result.details.max_disk_gb,
     },
     requested: {
       cpuCores: newCores,
@@ -156,21 +328,6 @@ export async function checkScaleCapacity(
       diskGb: 0,
     },
   };
-
-  // Only check if increasing
-  if (coresDelta > 0 && quota.usedCpuCores + coresDelta > quota.maxCpuCores) {
-    result.allowed = false;
-    result.reason = `CPU cores limit would be exceeded: ${quota.usedCpuCores + coresDelta}/${quota.maxCpuCores}`;
-    return result;
-  }
-
-  if (ramDelta > 0 && quota.usedRamMb + ramDelta > quota.maxRamMb) {
-    result.allowed = false;
-    result.reason = `RAM limit would be exceeded: ${quota.usedRamMb + ramDelta}/${quota.maxRamMb} MB`;
-    return result;
-  }
-
-  return result;
 }
 
 /**
@@ -279,6 +436,11 @@ export async function recalculateUsage(tenantId: string) {
       usedDiskGb: usage.diskGb,
     },
   });
+}
+
+export async function ensureTenantHasCapacity(tenantId: string, cores: number, memoryMb: number) {
+  const result = await checkCreateCapacity(tenantId, cores, memoryMb);
+  return result.allowed;
 }
 
 /**

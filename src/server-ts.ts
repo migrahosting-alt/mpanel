@@ -61,6 +61,8 @@ import { fileURLToPath } from 'url';
 
 // NEW: Provisioning worker
 import { startProvisioningWorker, stopProvisioningWorker } from './jobs/workers/provisioning.worker.js';
+import { startGuardianSecurityWorker, stopGuardianSecurityWorker } from './jobs/workers/guardianSecurity.worker.js';
+import shieldMiddleware from './middleware/shield.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -164,6 +166,9 @@ app.get('/metrics', metricsHandler);
 app.get('/api/health', healthCheckHandler);
 app.get('/api/ready', readinessHandler);
 app.get('/api/live', livenessHandler);
+
+// Shield trust boundary for /api/v1 traffic
+app.use('/api/v1', shieldMiddleware);
 
 // ==============================================================
 // NEW TypeScript API Routes (Auth, Products, Orders)
@@ -330,6 +335,9 @@ const server = httpServer.listen(PORT, HOST, async () => {
     await startProvisioningWorker();
     logger.info('✓ Provisioning worker started successfully');
     console.log('✓ Provisioning worker processing jobs...');
+    await startGuardianSecurityWorker();
+    logger.info('✓ Guardian security worker started successfully');
+    console.log('✓ Guardian security worker processing jobs...');
   } catch (error) {
     logger.error('Failed to start provisioning worker', { error: error instanceof Error ? error.message : 'Unknown' });
     console.error('✗ Provisioning worker failed to start:', error);
@@ -367,6 +375,8 @@ onShutdown(async () => {
   // Stop provisioning worker
   await stopProvisioningWorker();
   logger.info('Provisioning worker stopped');
+  await stopGuardianSecurityWorker();
+  logger.info('Guardian security worker stopped');
   
   // Stop memory leak detection
   memoryLeakDetector.stop();

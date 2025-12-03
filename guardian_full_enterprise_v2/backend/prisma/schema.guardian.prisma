@@ -1,0 +1,142 @@
+/// Guardian AI – Prisma extension for Migra platform
+/// Merge these models into your main schema.prisma.
+
+model GuardianInstance {
+  id             String   @id @default(uuid())
+  tenantId       String
+  dataRegion     String
+  enabled        Boolean  @default(true)
+  environment    String   @default("production")
+  policyPack     String   @default("default")
+  policyVersion  String   @default("v1")
+  autoRemediationEnabled Boolean @default(false)
+  autoRemediationAllowedSeverities String @default("low,medium")
+  allowProdAutoRemediation Boolean @default(false)
+
+  createdByUserId String?
+  updatedByUserId String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  scans        GuardianScan[]
+  findings     GuardianFinding[]
+  remediations GuardianRemediationTask[]
+  auditEvents  GuardianAuditEvent[]
+
+  @@index([tenantId])
+  @@index([dataRegion])
+}
+
+model GuardianScan {
+  id         String   @id @default(uuid())
+  tenantId   String
+  instanceId String
+  serverId   String?
+  dataRegion String
+
+  type       String
+  status     String
+  findingsCount Int @default(0)
+  severityMax  String?
+  startedAt  DateTime?
+  completedAt DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  triggeredByUserId String?
+  triggeredByRole   String?
+
+  tenant   Tenant          @relation(fields: [tenantId], references: [id])
+  instance GuardianInstance @relation(fields: [instanceId], references: [id])
+  server   Server?         @relation(fields: [serverId], references: [id])
+
+  findings     GuardianFinding[]
+  remediations GuardianRemediationTask[]
+
+  @@index([tenantId])
+  @@index([serverId])
+  @@index([status])
+}
+
+model GuardianFinding {
+  id          String   @id @default(uuid())
+  tenantId    String
+  scanId      String
+  serverId    String?
+  dataRegion  String
+
+  code        String
+  title       String
+  description String
+  category    String
+  severity    String
+  status      String   @default("open")
+  detailsJson String?
+  rawLogRef   String?
+  evidenceRef String?
+  remediationHint String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id])
+  scan   GuardianScan @relation(fields: [scanId], references: [id])
+  server Server?      @relation(fields: [serverId], references: [id])
+
+  @@index([tenantId])
+  @@index([severity])
+}
+
+model GuardianRemediationTask {
+  id          String   @id @default(uuid())
+  tenantId    String
+  instanceId  String
+  scanId      String?
+  findingId   String?
+  serverId    String?
+  dataRegion  String
+
+  status      String   @default("pending")
+  mode        String   @default("request")
+  severity    String?
+  actionType  String
+  actionPayloadJson String?
+
+  requestedByUserId String?
+  tenantApprovedByUserId String?
+  platformApprovedByUserId String?
+
+  requestedAt   DateTime @default(now())
+  tenantApprovedAt   DateTime?
+  platformApprovedAt DateTime?
+  executedAt         DateTime?
+
+  resultStatus  String?
+  resultMessage String?
+  resultLogRef  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([status])
+}
+
+model GuardianAuditEvent {
+  id          String   @id @default(uuid())
+  tenantId    String?
+  dataRegion  String?
+  actorUserId String?
+  actorRole   String?
+  actorType   String  @default("system")
+  eventType   String
+  entityType  String?
+  entityId    String?
+  metadataJson String?
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([eventType])
+}
