@@ -46,19 +46,29 @@ model Tenant {
   tenantUsers     TenantUser[] // TS: tenantService.ts, userService.ts
 
   // CloudPods relations
-  cloudPods      CloudPod[]
-  cloudPodJobs   CloudPodJob[]
-  cloudPodEvents CloudPodEvent[]
-  cloudPodQuota  CloudPodQuota?
+  cloudPods                        CloudPod[]
+  cloudPodJobs                     CloudPodJob[]
+  cloudPodEvents                   CloudPodEvent[]
+  cloudPodQuota                    CloudPodQuota?
+  cloudPodAudits                   CloudPodAudit[]
+  cloudPodWebhooks                 CloudPodWebhook[]
+  cloudPodUsageSamples             CloudPodUsageSample[]
+  cloudPodUsageDailies             CloudPodUsageDaily[]
+  cloudPodBackupPolicies           CloudPodBackupPolicy[]
+  cloudTenantResourceSubscriptions CloudTenantResourceSubscription[]
+  cloudTenantResourceTotal         CloudTenantResourceTotal?
+
+  // SSL relations
+  sslCertificates SslCertificate[]
 
   // Shield relations
-  shieldPolicies                   ShieldPolicy[]
-  shieldDecisions                  ShieldDecision[]
-  guardianInstances                GuardianInstance[]
-  guardianScans                    GuardianScan[]
-  guardianFindings                 GuardianFinding[]
-  guardianRemediationTasks         GuardianRemediationTask[]
-  guardianAuditEvents              GuardianAuditEvent[]
+  shieldPolicies           ShieldPolicy[]
+  shieldDecisions          ShieldDecision[]
+  guardianInstances        GuardianInstance[]
+  guardianScans            GuardianScan[]
+  guardianFindings         GuardianFinding[]
+  guardianRemediationTasks GuardianRemediationTask[]
+  guardianAuditEvents      GuardianAuditEvent[]
 
   @@map("tenants")
 }
@@ -81,11 +91,12 @@ model User {
   updatedAt     DateTime  @updatedAt @map("updated_at")
   deletedAt     DateTime? @map("deleted_at") // TS: userService.ts (soft delete)
 
-  tenant                      Tenant?                      @relation(fields: [tenantId], references: [id])
-  auditLogs                   AuditLog[]
-  customers                   Customer[]
-  tenantUsers                 TenantUser[] // TS: userService.ts, tenantService.ts
-  guardianAuditEvents         GuardianAuditEvent[]
+  tenant              Tenant?              @relation(fields: [tenantId], references: [id])
+  auditLogs           AuditLog[]
+  customers           Customer[]
+  tenantUsers         TenantUser[] // TS: userService.ts, tenantService.ts
+  guardianAuditEvents GuardianAuditEvent[]
+  cloudPodAudits      CloudPodAudit[]
 
   @@map("users")
 }
@@ -98,6 +109,8 @@ model User {
 // ============================================
 
 /// TenantUser - Join table for User-Tenant membership with roles
+/// RBAC authority: use TenantUser.role for permissions; User.tenantId is legacy
+/// and only for backwards-compat single-tenant flows.
 /// TS: userService.ts (getUserTenants, getUserTenantRole)
 /// TS: tenantService.ts (getOrCreateTenantForUser, addUserToTenant, getTenantUsers)
 model TenantUser {
@@ -139,13 +152,13 @@ model Server {
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
 
-  tenant                           Tenant                            @relation(fields: [tenantId], references: [id])
-  hostingAccounts                  HostingAccount[]
-  vpsInstances                     VpsInstance[]
-  metrics                          ServerMetric[]
-  guardianScans                    GuardianScan[]
-  guardianFindings                 GuardianFinding[]
-  guardianRemediationTasks         GuardianRemediationTask[]
+  tenant                   Tenant                    @relation(fields: [tenantId], references: [id])
+  hostingAccounts          HostingAccount[]
+  vpsInstances             VpsInstance[]
+  metrics                  ServerMetric[]
+  guardianScans            GuardianScan[]
+  guardianFindings         GuardianFinding[]
+  guardianRemediationTasks GuardianRemediationTask[]
 
   @@map("servers")
 }
@@ -188,6 +201,7 @@ model Product {
   tenant Tenant  @relation(fields: [tenantId], references: [id])
   prices Price[]
 
+  @@index([tenantId, isActive])
   @@map("products")
 }
 
@@ -214,6 +228,8 @@ model Price {
   subscriptions Subscription[]
   orders        Order[]
 
+  @@index([tenantId, isActive])
+  @@index([productId, isActive])
   @@map("prices")
 }
 
@@ -310,6 +326,9 @@ model Subscription {
   price_rel Price?    @relation(fields: [priceId], references: [id])
   order     Order?    @relation(fields: [orderId], references: [id])
 
+  @@index([tenantId, status])
+  @@index([tenantId, customerId])
+  @@index([tenantId, productCode])
   @@map("subscriptions")
 }
 
@@ -329,11 +348,12 @@ model Domain {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant       Tenant          @relation(fields: [tenantId], references: [id])
-  dnsZones     DnsZone[]
-  hosting      HostingAccount?
-  vps          VpsInstance?
-  mailAccounts MailAccount[]
+  tenant          Tenant           @relation(fields: [tenantId], references: [id])
+  dnsZones        DnsZone[]
+  hosting         HostingAccount?
+  vps             VpsInstance?
+  mailAccounts    MailAccount[]
+  sslCertificates SslCertificate[]
 
   @@map("domains")
 }
@@ -440,6 +460,8 @@ model HostingAccount {
   domain Domain @relation(fields: [domainId], references: [id])
   server Server @relation(fields: [serverId], references: [id])
 
+  @@index([tenantId, status])
+  @@index([serverId])
   @@map("websites")
 }
 
@@ -463,6 +485,8 @@ model VpsInstance {
   domain Domain? @relation(fields: [domainId], references: [id])
   server Server  @relation(fields: [serverId], references: [id])
 
+  @@index([tenantId, status])
+  @@index([serverId])
   @@map("deployments")
 }
 
@@ -487,6 +511,8 @@ model MailAccount {
   domain Domain @relation(fields: [domainId], references: [id])
 
   @@unique([email])
+  @@index([tenantId, status])
+  @@index([domainId])
   @@map("mailboxes")
 }
 
@@ -499,7 +525,7 @@ model MailAccount {
 model BackupJob {
   id        String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   tenantId  String    @map("tenant_id") @db.Uuid
-  type      String // Legacy: varchar instead of enum
+  backupType String   @map("backup_type") // Legacy: varchar instead of enum
   targetId  String    @map("target_id") @db.Uuid
   status    String    @default("pending") // Legacy: varchar instead of enum
   lastRunAt DateTime? @map("last_run_at")
@@ -511,6 +537,8 @@ model BackupJob {
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
+  @@index([tenantId, status])
+  @@index([backupType, status])
   @@map("backups")
 }
 
@@ -572,23 +600,23 @@ model AuditLog {
 // ============================================
 
 model GuardianInstance {
-  id             String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  tenantId       String   @map("tenant_id") @db.Uuid
-  dataRegion     String   @map("data_region")
-  enabled        Boolean  @default(true)
-  environment    String   @default("production")
-  policyPack     String   @default("default") @map("policy_pack")
-  policyVersion  String   @default("v1") @map("policy_version")
-  autoRemediationEnabled Boolean @default(false) @map("auto_remediation_enabled")
-  autoRemediationAllowedSeverities String @default("low,medium") @map("auto_remediation_allowed_severities")
-  allowProdAutoRemediation Boolean @default(false) @map("allow_prod_auto_remediation")
+  id                               String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId                         String  @map("tenant_id") @db.Uuid
+  dataRegion                       String  @map("data_region")
+  enabled                          Boolean @default(true)
+  environment                      String  @default("production")
+  policyPack                       String  @default("default") @map("policy_pack")
+  policyVersion                    String  @default("v1") @map("policy_version")
+  autoRemediationEnabled           Boolean @default(false) @map("auto_remediation_enabled")
+  autoRemediationAllowedSeverities String  @default("low,medium") @map("auto_remediation_allowed_severities")
+  allowProdAutoRemediation         Boolean @default(false) @map("allow_prod_auto_remediation")
 
   createdByUserId String?  @map("created_by_user_id") @db.Uuid
   updatedByUserId String?  @map("updated_by_user_id") @db.Uuid
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
-  tenant       Tenant                  @relation(fields: [tenantId], references: [id])
+  tenant       Tenant                    @relation(fields: [tenantId], references: [id])
   scans        GuardianScan[]
   findings     GuardianFinding[]
   remediations GuardianRemediationTask[]
@@ -600,27 +628,27 @@ model GuardianInstance {
 }
 
 model GuardianScan {
-  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  tenantId   String   @map("tenant_id") @db.Uuid
-  instanceId String   @map("instance_id") @db.Uuid
-  serverId   String?  @map("server_id") @db.Uuid
-  dataRegion String   @map("data_region")
+  id         String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId   String  @map("tenant_id") @db.Uuid
+  instanceId String  @map("instance_id") @db.Uuid
+  serverId   String? @map("server_id") @db.Uuid
+  dataRegion String  @map("data_region")
 
-  type       String
-  status     String
-  findingsCount Int @default(0) @map("findings_count")
-  severityMax  String? @map("severity_max")
-  startedAt  DateTime? @map("started_at")
-  completedAt DateTime? @map("completed_at")
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  type          String
+  status        String
+  findingsCount Int       @default(0) @map("findings_count")
+  severityMax   String?   @map("severity_max")
+  startedAt     DateTime? @map("started_at")
+  completedAt   DateTime? @map("completed_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
   triggeredByUserId String? @map("triggered_by_user_id") @db.Uuid
   triggeredByRole   String? @map("triggered_by_role")
 
-  tenant   Tenant          @relation(fields: [tenantId], references: [id])
+  tenant   Tenant           @relation(fields: [tenantId], references: [id])
   instance GuardianInstance @relation(fields: [instanceId], references: [id])
-  server   Server?         @relation(fields: [serverId], references: [id])
+  server   Server?          @relation(fields: [serverId], references: [id])
 
   findings     GuardianFinding[]
   remediations GuardianRemediationTask[]
@@ -632,22 +660,22 @@ model GuardianScan {
 }
 
 model GuardianFinding {
-  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  tenantId    String   @map("tenant_id") @db.Uuid
-  instanceId  String   @map("instance_id") @db.Uuid
-  scanId      String   @map("scan_id") @db.Uuid
-  serverId    String?  @map("server_id") @db.Uuid
-  dataRegion  String   @map("data_region")
+  id         String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId   String  @map("tenant_id") @db.Uuid
+  instanceId String  @map("instance_id") @db.Uuid
+  scanId     String  @map("scan_id") @db.Uuid
+  serverId   String? @map("server_id") @db.Uuid
+  dataRegion String  @map("data_region")
 
-  code        String
-  title       String
-  description String
-  category    String
-  severity    String
-  status      String   @default("open")
-  detailsJson String?  @map("details_json") @db.Text
-  rawLogRef   String?  @map("raw_log_ref")
-  evidenceRef String?  @map("evidence_ref")
+  code            String
+  title           String
+  description     String
+  category        String
+  severity        String
+  status          String  @default("open")
+  detailsJson     String? @map("details_json") @db.Text
+  rawLogRef       String? @map("raw_log_ref")
+  evidenceRef     String? @map("evidence_ref")
   remediationHint String? @map("remediation_hint") @db.Text
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -658,31 +686,33 @@ model GuardianFinding {
   scan     GuardianScan     @relation(fields: [scanId], references: [id])
   server   Server?          @relation(fields: [serverId], references: [id])
 
+  remediations GuardianRemediationTask[]
+
   @@index([tenantId])
   @@index([severity])
   @@map("guardian_findings")
 }
 
 model GuardianRemediationTask {
-  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  tenantId    String   @map("tenant_id") @db.Uuid
-  instanceId  String   @map("instance_id") @db.Uuid
-  scanId      String?  @map("scan_id") @db.Uuid
-  findingId   String?  @map("finding_id")
-  serverId    String?  @map("server_id") @db.Uuid
-  dataRegion  String   @map("data_region")
+  id         String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId   String  @map("tenant_id") @db.Uuid
+  instanceId String  @map("instance_id") @db.Uuid
+  scanId     String? @map("scan_id") @db.Uuid
+  findingId  String? @map("finding_id")
+  serverId   String? @map("server_id") @db.Uuid
+  dataRegion String  @map("data_region")
 
-  status      String   @default("pending")
-  mode        String   @default("request")
-  severity    String?
-  actionType  String   @map("action_type")
+  status            String  @default("pending")
+  mode              String  @default("request")
+  severity          String?
+  actionType        String  @map("action_type")
   actionPayloadJson String? @map("action_payload_json") @db.Text
 
-  requestedByUserId String? @map("requested_by_user_id") @db.Uuid
-  tenantApprovedByUserId String? @map("tenant_approved_by_user_id") @db.Uuid
+  requestedByUserId        String? @map("requested_by_user_id") @db.Uuid
+  tenantApprovedByUserId   String? @map("tenant_approved_by_user_id") @db.Uuid
   platformApprovedByUserId String? @map("platform_approved_by_user_id") @db.Uuid
 
-  requestedAt   DateTime @default(now()) @map("requested_at")
+  requestedAt        DateTime  @default(now()) @map("requested_at")
   tenantApprovedAt   DateTime? @map("tenant_approved_at")
   platformApprovedAt DateTime? @map("platform_approved_at")
   executedAt         DateTime? @map("executed_at")
@@ -694,6 +724,7 @@ model GuardianRemediationTask {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  finding  GuardianFinding? @relation(fields: [findingId], references: [id])
   tenant   Tenant           @relation(fields: [tenantId], references: [id])
   instance GuardianInstance @relation(fields: [instanceId], references: [id])
   scan     GuardianScan?    @relation(fields: [scanId], references: [id])
@@ -705,22 +736,22 @@ model GuardianRemediationTask {
 }
 
 model GuardianAuditEvent {
-  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  tenantId    String?  @map("tenant_id") @db.Uuid
-  instanceId  String?  @map("instance_id") @db.Uuid
-  dataRegion  String?  @map("data_region")
-  actorUserId String?  @map("actor_user_id") @db.Uuid
-  actorRole   String?  @map("actor_role")
-  actorType   String  @default("system") @map("actor_type")
-  eventType   String   @map("event_type")
-  entityType  String?  @map("entity_type")
-  entityId    String?  @map("entity_id")
-  metadataJson String? @map("metadata_json") @db.Text
-  createdAt   DateTime @default(now()) @map("created_at")
+  id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenantId     String?  @map("tenant_id") @db.Uuid
+  instanceId   String?  @map("instance_id") @db.Uuid
+  dataRegion   String?  @map("data_region")
+  actorUserId  String?  @map("actor_user_id") @db.Uuid
+  actorRole    String?  @map("actor_role")
+  actorType    String   @default("system") @map("actor_type")
+  eventType    String   @map("event_type")
+  entityType   String?  @map("entity_type")
+  entityId     String?  @map("entity_id")
+  metadataJson String?  @map("metadata_json") @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
 
-  tenant   Tenant?          @relation(fields: [tenantId], references: [id])
+  tenant   Tenant?           @relation(fields: [tenantId], references: [id])
   instance GuardianInstance? @relation(fields: [instanceId], references: [id])
-  user     User?            @relation(fields: [actorUserId], references: [id])
+  user     User?             @relation(fields: [actorUserId], references: [id])
 
   @@index([tenantId, createdAt])
   @@index([eventType])
@@ -747,6 +778,11 @@ model SslCertificate {
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
 
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+  domain Domain  @relation(fields: [domainId], references: [id])
+
+  @@index([tenantId])
+  @@index([domainId])
   @@index([validTo, autoRenew])
   @@map("ssl_certificates")
 }
@@ -791,10 +827,17 @@ model CloudPod {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  tenant    Tenant             @relation(fields: [tenantId], references: [id])
-  blueprint CloudPodBlueprint? @relation(fields: [blueprintId], references: [id])
-  jobs      CloudPodJob[]
-  events    CloudPodEvent[]
+  tenant                   Tenant                            @relation(fields: [tenantId], references: [id])
+  blueprint                CloudPodBlueprint?                @relation(fields: [blueprintId], references: [id])
+  jobs                     CloudPodJob[]
+  events                   CloudPodEvent[]
+  audits                   CloudPodAudit[]
+  healthStatus             CloudPodHealthStatus?
+  securityGroupAssignments CloudPodSecurityGroupAssignment[]
+  usageSamples             CloudPodUsageSample[]
+  usageDailies             CloudPodUsageDaily[]
+  backups                  CloudPodBackup[]
+  backupPolicies           CloudPodBackupPolicy[]
 
   @@index([tenantId, status])
   @@index([status, createdAt])
@@ -813,8 +856,9 @@ model CloudPodJob {
   error   String?
 
   // Job queue tracking
-  attempts  Int     @default(0)
-  bullJobId String? @map("bull_job_id") // BullMQ job ID for correlation
+  attempts       Int     @default(0)
+  bullJobId      String? @map("bull_job_id") // BullMQ job ID for correlation
+  idempotencyKey String? @map("idempotency_key")
 
   createdAt  DateTime  @default(now()) @map("created_at")
   startedAt  DateTime? @map("started_at")
@@ -826,6 +870,7 @@ model CloudPodJob {
   @@index([tenantId, status])
   @@index([status, createdAt])
   @@index([cloudPodId])
+  @@index([idempotencyKey])
   @@map("cloud_pod_jobs")
 }
 
@@ -939,6 +984,10 @@ model CloudPodAudit {
   details   Json?
   createdAt DateTime @default(now()) @map("created_at")
 
+  tenant Tenant?   @relation(fields: [tenantId], references: [id])
+  user   User?     @relation(fields: [userId], references: [id])
+  pod    CloudPod? @relation(fields: [podId], references: [id])
+
   @@index([tenantId, podId])
   @@index([tenantId, createdAt])
   @@index([action])
@@ -985,9 +1034,11 @@ model CloudPodSecurityGroupAssignment {
   securityGroupId String   @map("security_group_id") @db.Uuid
   createdAt       DateTime @default(now()) @map("created_at")
 
+  pod           CloudPod              @relation(fields: [podId], references: [id], onDelete: Cascade)
   securityGroup CloudPodSecurityGroup @relation(fields: [securityGroupId], references: [id], onDelete: Cascade)
 
   @@unique([podId, securityGroupId])
+  @@index([podId])
   @@map("cloud_pod_security_group_assignments")
 }
 
@@ -999,6 +1050,8 @@ model CloudPodHealthStatus {
   lastCheckedAt       DateTime @map("last_checked_at")
   lastError           String?  @map("last_error")
   consecutiveFailures Int      @default(0) @map("consecutive_failures")
+
+  pod CloudPod @relation(fields: [podId], references: [id], onDelete: Cascade)
 
   @@map("cloud_pod_health_status")
 }
@@ -1014,6 +1067,9 @@ model CloudPodUsageSample {
   diskGb    Float    @map("disk_gb")
   netInMb   Float    @map("net_in_mb")
   netOutMb  Float    @map("net_out_mb")
+
+  tenant Tenant   @relation(fields: [tenantId], references: [id])
+  pod    CloudPod @relation(fields: [podId], references: [id])
 
   @@index([tenantId, podId, timestamp])
   @@index([podId, timestamp])
@@ -1034,6 +1090,9 @@ model CloudPodUsageDaily {
   totalNetInMb  Float    @map("total_net_in_mb")
   totalNetOutMb Float    @map("total_net_out_mb")
 
+  tenant Tenant   @relation(fields: [tenantId], references: [id])
+  pod    CloudPod @relation(fields: [podId], references: [id])
+
   @@unique([tenantId, podId, date])
   @@index([tenantId, date])
   @@map("cloud_pod_usage_daily")
@@ -1051,6 +1110,9 @@ model CloudPodBackupPolicy {
   isActive       Boolean  @default(true) @map("is_active")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant?   @relation(fields: [tenantId], references: [id])
+  pod    CloudPod? @relation(fields: [podId], references: [id])
 
   backups CloudPodBackup[]
 
@@ -1072,6 +1134,7 @@ model CloudPodBackup {
   completedAt  DateTime? @map("completed_at")
   errorMessage String?   @map("error_message")
 
+  pod    CloudPod              @relation(fields: [podId], references: [id])
   policy CloudPodBackupPolicy? @relation(fields: [policyId], references: [id])
 
   @@index([podId, createdAt])
@@ -1091,6 +1154,7 @@ model CloudPodWebhook {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  tenant     Tenant                    @relation(fields: [tenantId], references: [id])
   deliveries CloudPodWebhookDelivery[]
 
   @@index([tenantId, isActive])
@@ -1218,7 +1282,8 @@ model CloudTenantResourceSubscription {
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
 
-  plan CloudResourcePlan @relation(fields: [planId], references: [id])
+  tenant Tenant            @relation(fields: [tenantId], references: [id])
+  plan   CloudResourcePlan @relation(fields: [planId], references: [id])
 
   @@index([tenantId, status])
   @@map("cloud_tenant_resource_subscriptions")
@@ -1233,6 +1298,8 @@ model CloudTenantResourceTotal {
   diskGbTotal      Int      @default(0) @map("disk_gb_total")
   bandwidthGbTotal Int?     @map("bandwidth_gb_total")
   updatedAt        DateTime @default(now()) @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
 
   @@map("cloud_tenant_resource_totals")
 }
