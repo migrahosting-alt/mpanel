@@ -90,10 +90,10 @@ export async function listShieldPolicies(req: AuthRequest, res: Response) {
     })();
 
     const policies = await listPolicies({ tenantId });
-    res.json({ policies });
+    return res.json({ policies });
   } catch (error) {
     logger.error('Failed to list shield policies', { error: getErrorMessage(error) });
-    res.status(500).json({ error: 'Failed to fetch shield policies' });
+    return res.status(500).json({ error: 'Failed to fetch shield policies' });
   }
 }
 
@@ -109,10 +109,10 @@ export async function listShieldDecisions(req: AuthRequest, res: Response) {
     })();
 
     const decisions = await listRecentDecisions({ limit, tenantId });
-    res.json({ decisions });
+    return res.json({ decisions });
   } catch (error) {
     logger.error('Failed to list shield decisions', { error: getErrorMessage(error) });
-    res.status(500).json({ error: 'Failed to fetch shield decisions' });
+    return res.status(500).json({ error: 'Failed to fetch shield decisions' });
   }
 }
 
@@ -157,10 +157,10 @@ export async function createShieldPolicy(req: AuthRequest, res: Response) {
       },
     });
 
-    res.status(201).json({ policy });
+    return res.status(201).json({ policy });
   } catch (error) {
     logger.error('Failed to create shield policy', { error: getErrorMessage(error) });
-    res.status(500).json({ error: 'Failed to create shield policy' });
+    return res.status(500).json({ error: 'Failed to create shield policy' });
   }
 }
 
@@ -200,9 +200,9 @@ export async function updateShieldPolicy(req: AuthRequest, res: Response) {
       },
     });
 
-    res.json({ policy });
+    return res.json({ policy });
   } catch (error) {
     logger.error('Failed to update shield policy', { error: getErrorMessage(error) });
-    res.status(500).json({ error: 'Failed to update shield policy' });
+    return res.status(500).json({ error: 'Failed to update shield policy' });
   }
 }

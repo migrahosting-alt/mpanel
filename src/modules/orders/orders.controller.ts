@@ -43,8 +43,7 @@ export class OrdersController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        res.status(401).json({ error: 'Unauthorized' });
-        return;
+        return res.status(401).json({ error: 'Unauthorized' });
       }
 
       const { tenantId, userId } = req.user;
@@ -55,7 +54,7 @@ export class OrdersController {
         !body.totalAmountCents ||
         (!body.customerId && !body.customerEmail)
       ) {
-        res.status(400).json({
+        return res.status(400).json({
           error: 'Validation error',
           message: 'totalAmountCents and (customerId or customerEmail) are required',
         });
@@ -90,19 +89,17 @@ export class OrdersController {
 
       const result = await ordersService.createOrder(input, userId);
 
-      res.status(201).json({
+      return res.status(201).json({
         success: true,
         data: result,
       });
     } catch (error) {
       if (error instanceof Error) {
         if (error.message.includes('not found')) {
-          res.status(404).json({ error: 'Not found', message: error.message });
-          return;
+          return res.status(404).json({ error: 'Not found', message: error.message });
         }
         if (error.message.includes('required')) {
-          res.status(400).json({ error: 'Validation error', message: error.message });
-          return;
+          return res.status(400).json({ error: 'Validation error', message: error.message });
         }
       }
       next(error);
@@ -132,7 +129,7 @@ export class OrdersController {
           headers: Object.keys(req.headers),
         });
 
-        res.status(401).json({
+        return res.status(401).json({
           error: 'Unauthorized',
           message: 'Invalid internal API key',
         });
@@ -148,7 +145,7 @@ export class OrdersController {
         !body.priceSlug ||
         !body.totalAmountCents
       ) {
-        res.status(400).json({
+        return res.status(400).json({
           error: 'Validation error',
           message: 'tenantSlug, customer.email, priceSlug, and totalAmountCents are required',
         });
@@ -179,15 +176,14 @@ export class OrdersController {
 
       const result = await ordersService.createOrderFromWebhook(input);
 
-      res.status(201).json({
+      return res.status(201).json({
         success: true,
         data: result,
       });
     } catch (error) {
       if (error instanceof Error) {
         if (error.message.includes('not found') || error.message.includes('inactive')) {
-          res.status(404).json({ error: 'Not found', message: error.message });
-          return;
+          return res.status(404).json({ error: 'Not found', message: error.message });
         }
       }
 
@@ -196,7 +192,7 @@ export class OrdersController {
         stack: error instanceof Error ? error.stack : undefined,
       });
 
-      next(error);
+      return next(error);
     }
   }
 
@@ -212,8 +208,7 @@ export class OrdersController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        res.status(401).json({ error: 'Unauthorized' });
-        return;
+        return res.status(401).json({ error: 'Unauthorized' });
       }
 
       const { tenantId } = req.user;
@@ -239,7 +234,7 @@ export class OrdersController {
 
       const result = await ordersService.listOrders(options);
 
-      res.json({
+      return res.json({
         success: true,
         data: result.orders,
         meta: result.meta,
@@ -248,7 +243,7 @@ export class OrdersController {
       logger.error('List orders error', {
         error: error instanceof Error ? error.message : 'Unknown',
       });
-      next(error);
+      return next(error);
     }
   }
 
@@ -264,8 +259,7 @@ export class OrdersController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        res.status(401).json({ error: 'Unauthorized' });
-        return;
+        return res.status(401).json({ error: 'Unauthorized' });
       }
 
       const { id } = req.params;
@@ -274,8 +268,7 @@ export class OrdersController {
       const order = await ordersService.getOrder(id, tenantId);
 
       if (!order) {
-        res.status(404).json({ error: 'Order not found' });
-        return;
+        return res.status(404).json({ error: 'Order not found' });
       }
 
       res.json({
@@ -286,7 +279,7 @@ export class OrdersController {
       logger.error('Get order error', {
         error: error instanceof Error ? error.message : 'Unknown',
       });
-      next(error);
+      return next(error);
     }
   }
 
@@ -302,8 +295,7 @@ export class OrdersController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        res.status(401).json({ error: 'Unauthorized' });
-        return;
+        return res.status(401).json({ error: 'Unauthorized' });
       }
 
       const { id } = req.params;
@@ -323,26 +315,24 @@ export class OrdersController {
 
       const order = await ordersService.processOrder(input, userId);
 
-      res.json({
+      return res.json({
         success: true,
         data: order,
       });
     } catch (error) {
       if (error instanceof Error) {
         if (error.message.includes('not found')) {
-          res.status(404).json({ error: 'Not found', message: error.message });
-          return;
+          return res.status(404).json({ error: 'Not found', message: error.message });
         }
         if (error.message.includes('cannot be processed')) {
-          res.status(400).json({ error: 'Invalid state', message: error.message });
-          return;
+          return res.status(400).json({ error: 'Invalid state', message: error.message });
         }
       }
 
       logger.error('Process order payment error', {
         error: error instanceof Error ? error.message : 'Unknown',
       });
-      next(error);
+      return next(error);
     }
   }
 
@@ -358,8 +348,7 @@ export class OrdersController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        res.status(401).json({ error: 'Unauthorized' });
-        return;
+        return res.status(401).json({ error: 'Unauthorized' });
       }
 
       const { id } = req.params;
@@ -377,26 +366,24 @@ export class OrdersController {
 
       const order = await ordersService.cancelOrder(input, userId);
 
-      res.json({
+      return res.json({
         success: true,
         data: order,
       });
     } catch (error) {
       if (error instanceof Error) {
         if (error.message.includes('not found')) {
-          res.status(404).json({ error: 'Not found', message: error.message });
-          return;
+          return res.status(404).json({ error: 'Not found', message: error.message });
         }
         if (error.message.includes('cannot be cancelled')) {
-          res.status(400).json({ error: 'Invalid state', message: error.message });
-          return;
+          return res.status(400).json({ error: 'Invalid state', message: error.message });
         }
       }
 
       logger.error('Cancel order error', {
         error: error instanceof Error ? error.message : 'Unknown',
       });
-      next(error);
+      return next(error);
     }
   }
 
@@ -412,8 +399,7 @@ export class OrdersController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        res.status(401).json({ error: 'Unauthorized' });
-        return;
+        return res.status(401).json({ error: 'Unauthorized' });
       }
 
       const { id } = req.params;
@@ -422,7 +408,7 @@ export class OrdersController {
       const body = req.body as Partial<FailOrderInput>;
 
       if (!body.reason) {
-        res.status(400).json({
+        return res.status(400).json({
           error: 'Validation error',
           message: 'reason is required',
         });
@@ -440,22 +426,21 @@ export class OrdersController {
 
       const order = await ordersService.failOrder(input, userId);
 
-      res.json({
+      return res.json({
         success: true,
         data: order,
       });
     } catch (error) {
       if (error instanceof Error) {
         if (error.message.includes('not found')) {
-          res.status(404).json({ error: 'Not found', message: error.message });
-          return;
+          return res.status(404).json({ error: 'Not found', message: error.message });
         }
       }
 
       logger.error('Fail order error', {
         error: error instanceof Error ? error.message : 'Unknown',
       });
-      next(error);
+      return next(error);
     }
   }
 }

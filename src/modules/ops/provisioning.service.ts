@@ -110,7 +110,7 @@ export async function getQueueStats() {
 export async function getQueueDetails(queueName: string) {
   const where = queueName === 'all' ? {} : { type: { contains: queueName } };
 
-  const [pending, running, success, failed, recentJobs] = await Promise.all([
+  const [waiting, active, completed, failed, recentJobs] = await Promise.all([
     prisma.job.count({ where: { ...where, status: 'pending' } }),
     prisma.job.count({ where: { ...where, status: 'running' } }),
     prisma.job.count({ where: { ...where, status: 'success' } }),
@@ -128,7 +128,6 @@ export async function getQueueDetails(queueName: string) {
         },
       },
     }),
-  ]);
   ]);
 
   return {

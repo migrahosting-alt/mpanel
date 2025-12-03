@@ -62,7 +62,7 @@ export class ProductsController {
 
       const result = await productsService.listProducts(options);
 
-      res.json({
+      return res.json({
         success: true,
         data: result.products,
         meta: result.meta,
@@ -71,7 +71,7 @@ export class ProductsController {
       logger.error('Get public products error', {
         error: error instanceof Error ? error.message : 'Unknown',
       });
-      next(error);
+      return next(error);
     }
   }
 
@@ -91,7 +91,7 @@ export class ProductsController {
       const pricing = await productsService.getPlanPricing(code);
 
       if (!pricing) {
-        res.status(404).json({
+        return res.status(404).json({
           error: 'Not found',
           message: `Product not found: ${code}`,
         });
@@ -106,7 +106,7 @@ export class ProductsController {
       logger.error('Get plan pricing error', {
         error: error instanceof Error ? error.message : 'Unknown',
       });
-      next(error);
+      return next(error);
     }
   }
 
@@ -126,8 +126,7 @@ export class ProductsController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        res.status(401).json({ error: 'Unauthorized' });
-        return;
+        return res.status(401).json({ error: 'Unauthorized' });
       }
 
       const options: ListProductsOptions = {
@@ -148,7 +147,7 @@ export class ProductsController {
 
       const result = await productsService.listProducts(options);
 
-      res.json({
+      return res.json({
         success: true,
         data: result.products,
         meta: result.meta,
@@ -157,7 +156,7 @@ export class ProductsController {
       logger.error('List products error', {
         error: error instanceof Error ? error.message : 'Unknown',
       });
-      next(error);
+      return next(error);
     }
   }
 
@@ -173,8 +172,7 @@ export class ProductsController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        res.status(401).json({ error: 'Unauthorized' });
-        return;
+        return res.status(401).json({ error: 'Unauthorized' });
       }
 
       const { code } = req.params;
@@ -182,7 +180,7 @@ export class ProductsController {
       const product = await productsService.getProductByCode(code);
 
       if (!product) {
-        res.status(404).json({
+        return res.status(404).json({
           error: 'Not found',
           message: `Product not found: ${code}`,
         });
@@ -197,7 +195,7 @@ export class ProductsController {
       logger.error('Get product error', {
         error: error instanceof Error ? error.message : 'Unknown',
       });
-      next(error);
+      return next(error);
     }
   }
 
@@ -213,8 +211,7 @@ export class ProductsController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        res.status(401).json({ error: 'Unauthorized' });
-        return;
+        return res.status(401).json({ error: 'Unauthorized' });
       }
 
       const { tenantId, userId } = req.user;
@@ -222,7 +219,7 @@ export class ProductsController {
 
       // Validate required fields
       if (!body.code || !body.name || !body.slug || !body.type) {
-        res.status(400).json({
+        return res.status(400).json({
           error: 'Validation error',
           message: 'code, name, slug, and type are required',
         });
@@ -241,22 +238,21 @@ export class ProductsController {
 
       const product = await productsService.createProduct(input, userId);
 
-      res.status(201).json({
+      return res.status(201).json({
         success: true,
         data: product,
       });
     } catch (error) {
       if (error instanceof Error) {
         if (error.message.includes('already exists')) {
-          res.status(409).json({ error: 'Conflict', message: error.message });
-          return;
+          return res.status(409).json({ error: 'Conflict', message: error.message });
         }
       }
 
       logger.error('Create product error', {
         error: error instanceof Error ? error.message : 'Unknown',
       });
-      next(error);
+      return next(error);
     }
   }
 
@@ -272,8 +268,7 @@ export class ProductsController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        res.status(401).json({ error: 'Unauthorized' });
-        return;
+        return res.status(401).json({ error: 'Unauthorized' });
       }
 
       const { code } = req.params;
@@ -296,26 +291,24 @@ export class ProductsController {
         tenantId
       );
 
-      res.json({
+      return res.json({
         success: true,
         data: product,
       });
     } catch (error) {
       if (error instanceof Error) {
         if (error.message.includes('not found')) {
-          res.status(404).json({ error: 'Not found', message: error.message });
-          return;
+          return res.status(404).json({ error: 'Not found', message: error.message });
         }
         if (error.message.includes('already in use')) {
-          res.status(409).json({ error: 'Conflict', message: error.message });
-          return;
+          return res.status(409).json({ error: 'Conflict', message: error.message });
         }
       }
 
       logger.error('Update product error', {
         error: error instanceof Error ? error.message : 'Unknown',
       });
-      next(error);
+      return next(error);
     }
   }
 
@@ -331,8 +324,7 @@ export class ProductsController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        res.status(401).json({ error: 'Unauthorized' });
-        return;
+        return res.status(401).json({ error: 'Unauthorized' });
       }
 
       const { code } = req.params;
@@ -340,22 +332,21 @@ export class ProductsController {
 
       await productsService.deleteProduct(code, userId, tenantId);
 
-      res.json({
+      return res.json({
         success: true,
         message: 'Product deleted successfully',
       });
     } catch (error) {
       if (error instanceof Error) {
         if (error.message.includes('not found')) {
-          res.status(404).json({ error: 'Not found', message: error.message });
-          return;
+          return res.status(404).json({ error: 'Not found', message: error.message });
         }
       }
 
       logger.error('Delete product error', {
         error: error instanceof Error ? error.message : 'Unknown',
       });
-      next(error);
+      return next(error);
     }
   }
 
@@ -375,8 +366,7 @@ export class ProductsController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        res.status(401).json({ error: 'Unauthorized' });
-        return;
+        return res.status(401).json({ error: 'Unauthorized' });
       }
 
       const { code } = req.params;
@@ -386,7 +376,7 @@ export class ProductsController {
       // Get product by code to get productId
       const product = await productsService.getProductByCode(code);
       if (!product) {
-        res.status(404).json({
+        return res.status(404).json({
           error: 'Not found',
           message: `Product not found: ${code}`,
         });
@@ -395,7 +385,7 @@ export class ProductsController {
 
       // Validate required fields
       if (!body.name || !body.slug || !body.interval || body.amountCents === undefined) {
-        res.status(400).json({
+        return res.status(400).json({
           error: 'Validation error',
           message: 'name, slug, interval, and amountCents are required',
         });
@@ -418,22 +408,21 @@ export class ProductsController {
 
       const price = await productsService.createPrice(input, userId, tenantId);
 
-      res.status(201).json({
+      return res.status(201).json({
         success: true,
         data: price,
       });
     } catch (error) {
       if (error instanceof Error) {
         if (error.message.includes('already exists')) {
-          res.status(409).json({ error: 'Conflict', message: error.message });
-          return;
+          return res.status(409).json({ error: 'Conflict', message: error.message });
         }
       }
 
       logger.error('Create price error', {
         error: error instanceof Error ? error.message : 'Unknown',
       });
-      next(error);
+      return next(error);
     }
   }
 
@@ -449,8 +438,7 @@ export class ProductsController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        res.status(401).json({ error: 'Unauthorized' });
-        return;
+        return res.status(401).json({ error: 'Unauthorized' });
       }
 
       const { id } = req.params;
@@ -472,26 +460,24 @@ export class ProductsController {
 
       const price = await productsService.updatePrice(id, input, userId, tenantId);
 
-      res.json({
+      return res.json({
         success: true,
         data: price,
       });
     } catch (error) {
       if (error instanceof Error) {
         if (error.message.includes('not found')) {
-          res.status(404).json({ error: 'Not found', message: error.message });
-          return;
+          return res.status(404).json({ error: 'Not found', message: error.message });
         }
         if (error.message.includes('already in use')) {
-          res.status(409).json({ error: 'Conflict', message: error.message });
-          return;
+          return res.status(409).json({ error: 'Conflict', message: error.message });
         }
       }
 
       logger.error('Update price error', {
         error: error instanceof Error ? error.message : 'Unknown',
       });
-      next(error);
+      return next(error);
     }
   }
 
@@ -507,8 +493,7 @@ export class ProductsController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        res.status(401).json({ error: 'Unauthorized' });
-        return;
+        return res.status(401).json({ error: 'Unauthorized' });
       }
 
       const { id } = req.params;
@@ -516,22 +501,21 @@ export class ProductsController {
 
       await productsService.deletePrice(id, userId, tenantId);
 
-      res.json({
+      return res.json({
         success: true,
         message: 'Price deleted successfully',
       });
     } catch (error) {
       if (error instanceof Error) {
         if (error.message.includes('not found')) {
-          res.status(404).json({ error: 'Not found', message: error.message });
-          return;
+          return res.status(404).json({ error: 'Not found', message: error.message });
         }
       }
 
       logger.error('Delete price error', {
         error: error instanceof Error ? error.message : 'Unknown',
       });
-      next(error);
+      return next(error);
     }
   }
 
@@ -547,8 +531,7 @@ export class ProductsController {
   ): Promise<void> {
     try {
       if (!req.user) {
-        res.status(401).json({ error: 'Unauthorized' });
-        return;
+        return res.status(401).json({ error: 'Unauthorized' });
       }
 
       const { id } = req.params;
@@ -556,7 +539,7 @@ export class ProductsController {
       const price = await productsService.getPriceById(id);
 
       if (!price) {
-        res.status(404).json({
+        return res.status(404).json({
           error: 'Not found',
           message: `Price not found: ${id}`,
         });
@@ -571,7 +554,7 @@ export class ProductsController {
       logger.error('Get price error', {
         error: error instanceof Error ? error.message : 'Unknown',
       });
-      next(error);
+      return next(error);
     }
   }
 }

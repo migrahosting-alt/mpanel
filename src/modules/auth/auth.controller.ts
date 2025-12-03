@@ -51,7 +51,7 @@ export class AuthController {
 
       // Validate required fields
       if (!loginData.email || !loginData.password) {
-        res.status(400).json({
+        return res.status(400).json({
           error: 'Validation error',
           message: 'Email and password are required',
         });
@@ -61,7 +61,7 @@ export class AuthController {
       // Validate email format
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(loginData.email)) {
-        res.status(400).json({
+        return res.status(400).json({
           error: 'Validation error',
           message: 'Invalid email format',
         });
@@ -71,13 +71,13 @@ export class AuthController {
       const ipAddress = getClientIp(req);
       const result = await authService.login(loginData, ipAddress);
 
-      res.json(result);
+      return res.json(result);
     } catch (error) {
       // Handle specific error cases with appropriate status codes
       if (error instanceof Error) {
         // Invalid credentials - generic 401
         if (error.message.includes('credentials') || error.message.includes('Invalid')) {
-          res.status(401).json({
+          return res.status(401).json({
             error: 'Authentication failed',
             message: 'Invalid email or password',
           });
@@ -86,7 +86,7 @@ export class AuthController {
 
         // No tenant membership
         if (error.message.includes('tenant')) {
-          res.status(403).json({
+          return res.status(403).json({
             error: 'Access denied',
             message: 'No active tenant membership found',
           });
@@ -97,7 +97,7 @@ export class AuthController {
       logger.error('Login error', {
         error: error instanceof Error ? error.message : 'Unknown',
       });
-      next(error);
+      return next(error);
     }
   }
 
@@ -108,7 +108,7 @@ export class AuthController {
   async logout(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       if (!req.user) {
-        res.status(401).json({
+        return res.status(401).json({
           error: 'Unauthorized',
           message: 'Authentication required',
         });
@@ -118,7 +118,7 @@ export class AuthController {
       const ipAddress = getClientIp(req);
       await authService.logout(req.user.userId, req.user.tenantId, ipAddress);
 
-      res.json({
+      return res.json({
         message: 'Logged out successfully',
       });
     } catch (error) {
@@ -127,7 +127,7 @@ export class AuthController {
       });
 
       // Don't fail the logout even if audit fails
-      res.json({
+      return res.json({
         message: 'Logged out successfully',
       });
     }
@@ -142,7 +142,7 @@ export class AuthController {
       const refreshData: RefreshRequest = req.body;
 
       if (!refreshData.refreshToken) {
-        res.status(400).json({
+        return res.status(400).json({
           error: 'Validation error',
           message: 'Refresh token is required',
         });
@@ -151,7 +151,7 @@ export class AuthController {
 
       const result = await authService.refresh(refreshData);
 
-      res.json(result);
+      return res.json(result);
     } catch (error) {
       if (error instanceof Error) {
         if (
@@ -159,7 +159,7 @@ export class AuthController {
           error.message.includes('Invalid') ||
           error.message.includes('token')
         ) {
-          res.status(401).json({
+          return res.status(401).json({
             error: 'Token refresh failed',
             message: 'Invalid or expired refresh token',
           });
@@ -167,7 +167,7 @@ export class AuthController {
         }
 
         if (error.message.includes('inactive') || error.message.includes('not found')) {
-          res.status(403).json({
+          return res.status(403).json({
             error: 'Access denied',
             message: 'User account is inactive or not found',
           });
@@ -178,7 +178,7 @@ export class AuthController {
       logger.error('Token refresh error', {
         error: error instanceof Error ? error.message : 'Unknown',
       });
-      next(error);
+      return next(error);
     }
   }
 
@@ -189,7 +189,7 @@ export class AuthController {
   async me(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       if (!req.user) {
-        res.status(401).json({
+        return res.status(401).json({
           error: 'Unauthorized',
           message: 'Authentication required',
         });
@@ -198,10 +198,10 @@ export class AuthController {
 
       const result = await authService.me(req.user.userId, req.user.tenantId);
 
-      res.json(result);
+      return res.json(result);
     } catch (error) {
       if (error instanceof Error && error.message.includes('not found')) {
-        res.status(404).json({
+        return res.status(404).json({
           error: 'Not found',
           message: 'User not found',
         });
@@ -211,7 +211,7 @@ export class AuthController {
       logger.error('Get user error', {
         error: error instanceof Error ? error.message : 'Unknown',
       });
-      next(error);
+      return next(error);
     }
   }
 
@@ -222,7 +222,7 @@ export class AuthController {
   async listTenants(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       if (!req.user) {
-        res.status(401).json({
+        return res.status(401).json({
           error: 'Unauthorized',
           message: 'Authentication required',
         });
@@ -231,10 +231,10 @@ export class AuthController {
 
       const tenants = await authService.listTenants(req.user.userId);
 
-      res.json({ tenants });
+      return res.json({ tenants });
     } catch (error) {
       if (error instanceof Error && error.message.includes('not found')) {
-        res.status(404).json({
+        return res.status(404).json({
           error: 'Not found',
           message: 'User not found',
         });
@@ -244,7 +244,7 @@ export class AuthController {
       logger.error('List tenants error', {
         error: error instanceof Error ? error.message : 'Unknown',
       });
-      next(error);
+      return next(error);
     }
   }
 
@@ -255,7 +255,7 @@ export class AuthController {
   async switchTenant(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
       if (!req.user) {
-        res.status(401).json({
+        return res.status(401).json({
           error: 'Unauthorized',
           message: 'Authentication required',
         });
@@ -265,7 +265,7 @@ export class AuthController {
       const switchData: SwitchTenantRequest = req.body;
 
       if (!switchData.tenantId) {
-        res.status(400).json({
+        return res.status(400).json({
           error: 'Validation error',
           message: 'Target tenant ID is required',
         });
@@ -275,7 +275,7 @@ export class AuthController {
       // Validate UUID format
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
       if (!uuidRegex.test(switchData.tenantId)) {
-        res.status(400).json({
+        return res.status(400).json({
           error: 'Validation error',
           message: 'Invalid tenant ID format',
         });
@@ -285,11 +285,11 @@ export class AuthController {
       const ipAddress = getClientIp(req);
       const result = await authService.switchTenant(req.user.userId, switchData, ipAddress);
 
-      res.json(result);
+      return res.json(result);
     } catch (error) {
       if (error instanceof Error) {
         if (error.message.includes('not found')) {
-          res.status(404).json({
+          return res.status(404).json({
             error: 'Not found',
             message: 'User not found',
           });
@@ -297,7 +297,7 @@ export class AuthController {
         }
 
         if (error.message.includes('Access denied') || error.message.includes('not a member')) {
-          res.status(403).json({
+          return res.status(403).json({
             error: 'Access denied',
             message: 'You are not a member of the target tenant',
           });
@@ -308,7 +308,7 @@ export class AuthController {
       logger.error('Switch tenant error', {
         error: error instanceof Error ? error.message : 'Unknown',
       });
-      next(error);
+      return next(error);
     }
   }
 }
