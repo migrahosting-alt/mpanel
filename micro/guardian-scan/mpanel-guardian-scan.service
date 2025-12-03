@@ -1,0 +1,21 @@
+# Example systemd unit: Guardian Deep Scanner
+
+[Unit]
+Description=MigraHosting Guardian Deep Scanner Microservice
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mhadmin
+WorkingDirectory=/opt/micro/guardian-scan
+EnvironmentFile=/opt/micro/guardian-scan/.env
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=guardian-scanner
+
+[Install]
+WantedBy=multi-user.target

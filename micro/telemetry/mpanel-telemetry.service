@@ -1,0 +1,21 @@
+# Example systemd unit: Telemetry Worker
+
+[Unit]
+Description=MigraHosting Telemetry Microservice
+After=network-online.target postgresql.service redis.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mhadmin
+WorkingDirectory=/opt/micro/telemetry
+EnvironmentFile=/opt/micro/telemetry/.env
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=telemetry-worker
+
+[Install]
+WantedBy=multi-user.target

@@ -24,6 +24,7 @@ import {
   livenessHandler 
 } from './middleware/prometheus.js';
 import shieldMiddleware from './middleware/shield.js';
+import { smartAuth } from './middleware/authTiers.js';
 import { initializeGracefulShutdown, onShutdown, shutdownMiddleware } from './utils/gracefulShutdown.js';
 import { startDatabaseMonitoring } from './utils/dbHealthCheck.js';
 import { 
@@ -72,7 +73,7 @@ const __dirname = path.dirname(__filename);
 // ============================================================================
 let tsApiRouter = null;
 let tsApiRouterReady = false;
-const distApiRouterPath = path.resolve(__dirname, '../dist/routes/api.js');
+const distApiRouterPath = path.resolve(__dirname, '../dist-backend-temp/routes/api.js');
 
 try {
   const module = await import(pathToFileURL(distApiRouterPath).href);
@@ -354,15 +355,29 @@ app.get('/api/v1/__direct', (_req, res) => {
   res.json({ status: 'direct-ok', timestamp: new Date().toISOString() });
 });
 
-// Mount compiled TypeScript routes (dist build) before falling back to legacy routes
-if (tsApiRouterReady && tsApiRouter) {
-  app.use('/api', shieldMiddleware, tsApiRouter);
+// Mount compiled TypeScript routes (dist build)
+// TypeScript routes handle their own auth per-route (no global auth middleware)
+// NOTE: TypeScript modules currently have Prisma schema mismatches - using legacy routes for now
+if (false && tsApiRouterReady && tsApiRouter) {
+  logger.info('Mounting TypeScript API router (auth handled per-route)');
+  app.use('/api', tsApiRouter);
+  
+  logger.info('TypeScript routes mounted successfully', {
+    middleware: ['none - per-route auth'],
+    publicRoutes: [
+      '/api/products/public',
+      '/api/products/pricing',
+      '/api/health',
+      '/api/status',
+      '/api/auth/*'
+    ]
+  });
 } else {
-  logger.warn('TypeScript routes not mounted via legacy bridge; only legacy /api handlers are available');
+  logger.info('TypeScript routes disabled - using legacy routes until Prisma schema is updated');
 }
 
-// API routes
-app.use('/api', routes);
+// Legacy API routes with smartAuth middleware
+app.use('/api', smartAuth, routes);
 
 // Static file cache-busting middleware (prevent old file caching)
 app.use((req, res, next) => {

@@ -59,29 +59,23 @@ export default function JobsManagement() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const itemsPerPage = 20;
 
-  // Mock data for demonstration
-  const mockJobs: Job[] = [
-    { id: 'job-001', name: 'Provision cPanel Account', type: 'provisioning', status: 'running', priority: 'high', progress: 45, attempts: 1, maxAttempts: 3, createdAt: new Date(Date.now() - 120000).toISOString(), startedAt: new Date(Date.now() - 60000).toISOString(), data: { server: 'cpanel-srv1', domain: 'example.com' } },
-    { id: 'job-002', name: 'Send Invoice Email', type: 'email', status: 'completed', priority: 'normal', progress: 100, attempts: 1, maxAttempts: 3, createdAt: new Date(Date.now() - 300000).toISOString(), startedAt: new Date(Date.now() - 280000).toISOString(), completedAt: new Date(Date.now() - 270000).toISOString(), result: { sent: true, messageId: 'msg-12345' } },
-    { id: 'job-003', name: 'Process Stripe Payment', type: 'billing', status: 'failed', priority: 'critical', progress: 0, attempts: 3, maxAttempts: 3, createdAt: new Date(Date.now() - 600000).toISOString(), startedAt: new Date(Date.now() - 580000).toISOString(), error: 'Payment declined: Insufficient funds' },
-    { id: 'job-004', name: 'Server Backup - DB Core', type: 'backup', status: 'pending', priority: 'low', progress: 0, attempts: 0, maxAttempts: 3, createdAt: new Date(Date.now() - 30000).toISOString(), data: { server: 'db-core', backupType: 'full' } },
-    { id: 'job-005', name: 'Sync DNS Records', type: 'sync', status: 'running', priority: 'normal', progress: 78, attempts: 1, maxAttempts: 3, createdAt: new Date(Date.now() - 180000).toISOString(), startedAt: new Date(Date.now() - 150000).toISOString() },
-    { id: 'job-006', name: 'Maintenance Mode Toggle', type: 'maintenance', status: 'completed', priority: 'high', progress: 100, attempts: 1, maxAttempts: 1, createdAt: new Date(Date.now() - 900000).toISOString(), completedAt: new Date(Date.now() - 890000).toISOString() },
-    { id: 'job-007', name: 'CloudPod Scaling', type: 'provisioning', status: 'paused', priority: 'normal', progress: 30, attempts: 1, maxAttempts: 3, createdAt: new Date(Date.now() - 400000).toISOString(), startedAt: new Date(Date.now() - 350000).toISOString() },
-    { id: 'job-008', name: 'Bulk Email Campaign', type: 'email', status: 'running', priority: 'low', progress: 62, attempts: 1, maxAttempts: 3, createdAt: new Date(Date.now() - 500000).toISOString(), startedAt: new Date(Date.now() - 480000).toISOString(), data: { totalEmails: 500, sent: 310 } },
-    { id: 'job-009', name: 'Subscription Renewal', type: 'billing', status: 'pending', priority: 'high', progress: 0, attempts: 0, maxAttempts: 3, createdAt: new Date(Date.now() - 10000).toISOString(), data: { customerId: 'cus_abc123', planId: 'plan_enterprise' } },
-    { id: 'job-010', name: 'Certificate Renewal', type: 'maintenance', status: 'cancelled', priority: 'normal', progress: 0, attempts: 1, maxAttempts: 3, createdAt: new Date(Date.now() - 700000).toISOString(), error: 'Cancelled by admin' },
-  ];
-
   const fetchJobs = async () => {
     try {
       setLoading(true);
-      // TODO: Replace with actual API call
-      // const response = await fetch(`${API_BASE}/admin/jobs?status=${filter.status}&type=${filter.type}&search=${filter.search}`);
-      // const data = await response.json();
+      const token = localStorage.getItem('token');
+      const params = new URLSearchParams();
+      if (filter.status !== 'all') params.append('status', filter.status);
+      if (filter.type !== 'all') params.append('type', filter.type);
+      if (filter.search) params.append('search', filter.search);
       
-      // Using mock data
-      let filtered = [...mockJobs];
+      const response = await fetch(`${API_BASE}/admin/jobs?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      if (!response.ok) throw new Error('Failed to fetch jobs');
+      const data = await response.json();
+      
+      let filtered = data.jobs || data.data || [];
       if (filter.status !== 'all') {
         filtered = filtered.filter(j => j.status === filter.status);
       }
@@ -98,18 +92,21 @@ export default function JobsManagement() {
       
       setJobs(filtered);
       
-      // Calculate stats
+      // Calculate stats from all jobs (not filtered)
+      const allJobs = data.jobs || data.data || [];
       const newStats: JobStats = {
-        total: mockJobs.length,
-        pending: mockJobs.filter(j => j.status === 'pending').length,
-        running: mockJobs.filter(j => j.status === 'running').length,
-        completed: mockJobs.filter(j => j.status === 'completed').length,
-        failed: mockJobs.filter(j => j.status === 'failed').length,
-        cancelled: mockJobs.filter(j => j.status === 'cancelled').length,
+        total: allJobs.length,
+        pending: allJobs.filter((j: Job) => j.status === 'pending').length,
+        running: allJobs.filter((j: Job) => j.status === 'running').length,
+        completed: allJobs.filter((j: Job) => j.status === 'completed').length,
+        failed: allJobs.filter((j: Job) => j.status === 'failed').length,
+        cancelled: allJobs.filter((j: Job) => j.status === 'cancelled').length,
       };
       setStats(newStats);
     } catch (err) {
       console.error('Failed to fetch jobs:', err);
+      setJobs([]);
+      setStats({ total: 0, pending: 0, running: 0, completed: 0, failed: 0, cancelled: 0 });
     } finally {
       setLoading(false);
     }

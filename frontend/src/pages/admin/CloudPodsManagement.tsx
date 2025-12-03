@@ -95,16 +95,6 @@ export default function CloudPodsManagement() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  // Mock data for when API is not available
-  const mockPods: CloudPod[] = [
-    { id: 'pod-001', name: 'web-server-prod', customer_email: 'john@example.com', status: 'running', image: 'nginx:latest', cpu_cores: 2, memory_mb: 2048, disk_gb: 20, ip_address: '10.0.1.100', created_at: new Date(Date.now() - 86400000 * 30).toISOString(), uptime_seconds: 2592000, resource_usage: { cpu_percent: 35, memory_percent: 60, disk_percent: 45 } },
-    { id: 'pod-002', name: 'node-api-staging', customer_email: 'jane@company.com', status: 'running', image: 'node:20', cpu_cores: 4, memory_mb: 4096, disk_gb: 50, ip_address: '10.0.1.101', created_at: new Date(Date.now() - 86400000 * 15).toISOString(), uptime_seconds: 1296000, resource_usage: { cpu_percent: 55, memory_percent: 72, disk_percent: 30 } },
-    { id: 'pod-003', name: 'mysql-db-dev', customer_email: 'dev@startup.io', status: 'stopped', image: 'mysql:8.0', cpu_cores: 2, memory_mb: 2048, disk_gb: 100, ip_address: '10.0.1.102', created_at: new Date(Date.now() - 86400000 * 60).toISOString() },
-    { id: 'pod-004', name: 'wordpress-blog', customer_email: 'blogger@site.com', status: 'running', image: 'wordpress:latest', cpu_cores: 1, memory_mb: 1024, disk_gb: 25, ip_address: '10.0.1.103', created_at: new Date(Date.now() - 86400000 * 7).toISOString(), uptime_seconds: 604800, resource_usage: { cpu_percent: 15, memory_percent: 40, disk_percent: 55 } },
-    { id: 'pod-005', name: 'redis-cache', customer_email: 'admin@migrahosting.com', status: 'running', image: 'redis:alpine', cpu_cores: 1, memory_mb: 512, disk_gb: 5, ip_address: '10.0.1.104', created_at: new Date(Date.now() - 86400000 * 90).toISOString(), uptime_seconds: 7776000, resource_usage: { cpu_percent: 8, memory_percent: 25, disk_percent: 10 } },
-    { id: 'pod-006', name: 'php-app-legacy', customer_email: 'legacy@oldsite.net', status: 'error', image: 'php:7.4-fpm', cpu_cores: 2, memory_mb: 1024, disk_gb: 30, ip_address: '10.0.1.105', created_at: new Date(Date.now() - 86400000 * 180).toISOString() },
-  ];
-
   const fetchPods = useCallback(async () => {
     setLoading(true);
     try {
@@ -130,20 +120,13 @@ export default function CloudPodsManagement() {
       setStats(newStats);
       setError(null);
     } catch (err: any) {
-      // Use mock data as fallback when API fails
-      console.log('Using mock CloudPods data (API unavailable)');
-      setPods(mockPods);
-      const newStats: CloudPodStats = {
-        total: mockPods.length,
-        running: mockPods.filter(p => p.status === 'running').length,
-        stopped: mockPods.filter(p => p.status === 'stopped').length,
-        error: mockPods.filter(p => p.status === 'error').length,
-        totalCpu: mockPods.reduce((sum, p) => sum + (p.cpu_cores || 0), 0),
-        totalMemory: mockPods.reduce((sum, p) => sum + (p.memory_mb || 0), 0),
-        totalDisk: mockPods.reduce((sum, p) => sum + (p.disk_gb || 0), 0),
-      };
-      setStats(newStats);
-      setError(null); // Don't show error, we have mock data
+      console.error('Failed to fetch CloudPods:', err);
+      setPods([]);
+      setStats({
+        total: 0, running: 0, stopped: 0, error: 0,
+        totalCpu: 0, totalMemory: 0, totalDisk: 0,
+      });
+      setError(err.message || 'Failed to load CloudPods');
     } finally {
       setLoading(false);
     }

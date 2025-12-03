@@ -65,6 +65,7 @@ import importRoutes from './importRoutes.js';
 // const { metricsEndpoint } = require('../middleware/metrics');
 import publicRoutes from './publicRoutes.js';
 import serviceManagementRoutes from './serviceManagementRoutes.js';
+import systemHealthRoutes from './systemHealthRoutes.js';
 
 // Enterprise Features (Phase 2024-11-17)
 import notificationPreferencesRoutes from './notificationPreferencesRoutes.js';
@@ -103,6 +104,8 @@ router.get('/health', (req, res) => {
 // Public routes (no auth required)
 router.use('/public', publicRoutes);
 
+// System health & diagnostics (no auth required)
+router.use('/system', systemHealthRoutes);
 
 // Auth routes (login, register, password reset)
 router.use('/auth', authRoutes);

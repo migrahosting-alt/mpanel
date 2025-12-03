@@ -4,6 +4,18 @@ import { getActivePolicyForTenant, recordShieldDecision } from '../services/shie
 const REPORT_ONLY = 'report_only';
 const ENFORCE = 'enforce';
 
+// Public routes that bypass shield middleware
+const PUBLIC_ROUTES = [
+  '/api/products/public',
+  '/api/products/pricing',
+  '/api/health',
+  '/api/status',
+  '/api/__debug',
+  '/api/auth/login',
+  '/api/auth/register',
+  '/api/auth/refresh',
+];
+
 let otelApi;
 import('@opentelemetry/api')
   .then(module => {
@@ -172,6 +184,15 @@ async function persistDecision({ policy, tenantId, requestId, evaluation, contex
 
 export async function shieldMiddleware(req, res, next) {
   try {
+    // Skip shield for public routes
+    const path = req.path || req.originalUrl;
+    logger.info('Shield middleware check', { path, publicRoutes: PUBLIC_ROUTES });
+    if (PUBLIC_ROUTES.some(route => path.startsWith(route))) {
+      logger.info('Shield bypassed for public route', { path });
+      res.setHeader('X-mPanel-Shield', 'bypass:public_route');
+      return next();
+    }
+
     const tenantId = resolveTenantId(req);
     const requestId = req.id || req.headers['x-request-id'] || null;
     const context = {

@@ -1,0 +1,640 @@
+// ============================================
+// PRISMA SCHEMA ADDITIONS FOR FINAL MODULES
+// ============================================
+// Add these models to your existing schema.prisma
+// 
+// PRODUCTION READY with:
+// - Uniqueness constraints
+// - Foreign keys
+// - Soft deletes
+// - Performance indexes
+// - Idempotency support
+
+// ============================================
+// BILLING: PRODUCTS
+// ============================================
+
+model Product {
+  id          String   @id @default(cuid())
+  tenantId    String
+  code        String   // e.g. "cloudpod-pro", "wp-starter"
+  name        String
+  description String?
+  category    String   // HOSTING, CLOUDPOD, EMAIL, BACKUP, etc.
+  billingModel String  // RECURRING, ONE_TIME, USAGE_BASED
+  basePrice   Decimal  @db.Decimal(10, 2)
+  currency    String   @default("USD")
+  taxable     Boolean  @default(true)
+  active      Boolean  @default(true)
+  metadata    Json?
+  
+  // Soft delete
+  deletedAt   DateTime?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  tenant           Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  priceOverrides   PriceOverride[]
+  subscriptions    Subscription[]
+
+  // Constraints
+  @@unique([tenantId, code])
+  @@index([tenantId, active])
+  @@index([category, active])
+}
+
+model PriceOverride {
+  id         String   @id @default(cuid())
+  productId  String
+  tenantId   String?  // Null = applies to all tenants in region/currency
+  regionCode String?  // e.g. "US", "EU", "APAC"
+  currency   String?  // e.g. "USD", "EUR", "GBP"
+  price      Decimal  @db.Decimal(10, 2)
+  validFrom  DateTime
+  validUntil DateTime?
+  
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // Hierarchy: tenant > region > currency > base
+  @@index([productId, tenantId])
+  @@index([productId, regionCode])
+  @@index([productId, currency])
+}
+
+// ============================================
+// BILLING: SUBSCRIPTIONS
+// ============================================
+
+model Subscription {
+  id                 String    @id @default(cuid())
+  tenantId           String
+  customerId         String
+  productId          String
+  
+  status             String    // PENDING, ACTIVE, SUSPENDED, CANCELLED, EXPIRED
+  billingCycle       String    // MONTHLY, QUARTERLY, YEARLY, ONE_TIME
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  
+  price              Decimal   @db.Decimal(10, 2)
+  currency           String    @default("USD")
+  quantity           Int       @default(1)
+  
+  // CloudPod integration (bidirectional)
+  externalRef        String?   // CloudPod ID if this is a CloudPod subscription
+  
+  autoRenew          Boolean   @default(true)
+  trialEndsAt        DateTime?
+  cancelledAt        DateTime?
+  cancelReason       String?
+  
+  metadata           Json?
+  
+  // Soft delete
+  deletedAt          DateTime?
+  
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  // Relations
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product     Product @relation(fields: [productId], references: [id])
+  usageRecords UsageRecord[]
+  invoiceLines InvoiceLine[]
+
+  // Indexes
+  @@index([tenantId, status])
+  @@index([customerId, status])
+  @@index([productId])
+  @@index([externalRef]) // CloudPod lookup
+  @@index([status, currentPeriodEnd]) // Renewal processing
+}
+
+model UsageRecord {
+  id             String   @id @default(cuid())
+  subscriptionId String
+  metricName     String   // e.g. "storage_gb", "bandwidth_gb", "api_calls"
+  quantity       Decimal  @db.Decimal(15, 6)
+  timestamp      DateTime
+  metadata       Json?
+  
+  createdAt      DateTime @default(now())
+
+  // Relations
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@index([subscriptionId, timestamp])
+  @@index([metricName, timestamp])
+}
+
+// ============================================
+// BILLING: INVOICES
+// ============================================
+
+model Invoice {
+  id             String    @id @default(cuid())
+  tenantId       String
+  customerId     String
+  invoiceNumber  String    // INV-YYYY-NNNNNN (tenant-scoped sequential)
+  
+  status         String    // DRAFT, SENT, PAID, PARTIALLY_PAID, VOID, OVERDUE
+  
+  subtotal       Decimal   @db.Decimal(10, 2)
+  taxAmount      Decimal   @db.Decimal(10, 2) @default(0)
+  discountAmount Decimal   @db.Decimal(10, 2) @default(0)
+  total          Decimal   @db.Decimal(10, 2)
+  amountPaid     Decimal   @db.Decimal(10, 2) @default(0)
+  amountDue      Decimal   @db.Decimal(10, 2)
+  
+  currency       String    @default("USD")
+  
+  issuedAt       DateTime?
+  dueDate        DateTime?
+  paidAt         DateTime?
+  voidedAt       DateTime?
+  
+  notes          String?
+  metadata       Json?
+  
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // Relations
+  tenant       Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lines        InvoiceLine[]
+  payments     Payment[]
+  creditNotes  CreditNote[]
+
+  // Constraints
+  @@unique([tenantId, invoiceNumber])
+  @@index([tenantId, status])
+  @@index([customerId, status])
+  @@index([status, dueDate]) // Overdue detection
+}
+
+model InvoiceLine {
+  id             String   @id @default(cuid())
+  invoiceId      String
+  subscriptionId String?
+  
+  description    String
+  quantity       Decimal  @db.Decimal(10, 2)
+  unitPrice      Decimal  @db.Decimal(10, 2)
+  amount         Decimal  @db.Decimal(10, 2)
+  taxRate        Decimal  @db.Decimal(5, 2) @default(0)
+  
+  metadata       Json?
+  
+  createdAt      DateTime @default(now())
+
+  // Relations
+  invoice      Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id])
+
+  @@index([invoiceId])
+  @@index([subscriptionId])
+}
+
+model Payment {
+  id             String   @id @default(cuid())
+  invoiceId      String
+  
+  amount         Decimal  @db.Decimal(10, 2)
+  currency       String   @default("USD")
+  method         String   // STRIPE, BANK_TRANSFER, CREDIT, MANUAL
+  transactionId  String?  // External payment ID (Stripe, bank ref, etc.)
+  
+  status         String   // PENDING, COMPLETED, FAILED, REFUNDED
+  
+  paidAt         DateTime?
+  failedAt       DateTime?
+  failureReason  String?
+  
+  metadata       Json?
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relations
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@index([transactionId])
+  @@index([status])
+}
+
+model CreditNote {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  
+  amount      Decimal  @db.Decimal(10, 2)
+  reason      String
+  
+  issuedAt    DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  // Relations
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+}
+
+// ============================================
+// SECURITY CENTER
+// ============================================
+
+model UserSecurityProfile {
+  id             String    @id @default(cuid())
+  userId         String    @unique
+  tenantId       String
+  
+  mfaEnabled     Boolean   @default(false)
+  mfaMethod      String?   // TOTP, FIDO2, SMS
+  mfaSecret      String?   // Encrypted TOTP secret
+  mfaBackupCodes String?   // Encrypted JSON array
+  
+  lastPasswordChange DateTime?
+  passwordExpiresAt  DateTime?
+  
+  securityQuestions  Json?
+  
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // Relations
+  sessions     Session[]
+  apiTokens    ApiToken[]
+  securityEvents SecurityEvent[]
+
+  @@index([tenantId])
+  @@index([userId])
+}
+
+model Session {
+  id               String   @id @default(cuid())
+  userSecurityId   String
+  userId           String
+  tenantId         String
+  
+  sessionToken     String   @unique
+  ipAddress        String?
+  userAgent        String?
+  
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  revokeReason     String?
+  
+  lastActivityAt   DateTime @default(now())
+  
+  createdAt        DateTime @default(now())
+
+  // Relations
+  userSecurity UserSecurityProfile @relation(fields: [userSecurityId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([tenantId])
+  @@index([expiresAt]) // Cleanup expired sessions
+}
+
+model ApiToken {
+  id              String    @id @default(cuid())
+  userSecurityId  String
+  userId          String
+  tenantId        String
+  
+  name            String
+  tokenHash       String    @unique // SHA-256 hash
+  tokenPrefix     String    // First 8 chars for display
+  
+  scopes          String[]  // e.g. ["read:customers", "write:cloudpods"]
+  
+  expiresAt       DateTime?
+  revokedAt       DateTime?
+  lastUsedAt      DateTime?
+  
+  createdAt       DateTime  @default(now())
+
+  // Relations
+  userSecurity UserSecurityProfile @relation(fields: [userSecurityId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([tenantId])
+  @@index([tokenHash])
+}
+
+model SecurityEvent {
+  id              String   @id @default(cuid())
+  userSecurityId  String?
+  tenantId        String
+  userId          String?
+  
+  eventType       String   // MFA_ENABLED, TOKEN_CREATED, SESSION_REVOKED, LOGIN_FAILED, etc.
+  severity        String   // LOW, MEDIUM, HIGH, CRITICAL
+  
+  ipAddress       String?
+  userAgent       String?
+  
+  details         Json?
+  metadata        Json?
+  
+  timestamp       DateTime @default(now())
+
+  // Relations
+  userSecurity UserSecurityProfile? @relation(fields: [userSecurityId], references: [id])
+
+  @@index([tenantId, timestamp])
+  @@index([userId, timestamp])
+  @@index([eventType, timestamp])
+  @@index([severity, timestamp])
+}
+
+model TenantSecurityPolicy {
+  id                    String   @id @default(cuid())
+  tenantId              String   @unique
+  
+  requireMfa            Boolean  @default(false)
+  passwordMinLength     Int      @default(12)
+  passwordExpiryDays    Int?
+  sessionTimeoutMinutes Int      @default(480) // 8 hours
+  maxFailedLogins       Int      @default(5)
+  
+  allowedIpRanges       String[] // CIDR notation
+  
+  metadata              Json?
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+// ============================================
+// CLOUDPODS
+// ============================================
+
+model CloudPod {
+  id              String    @id @default(cuid())
+  tenantId        String
+  slug            String    // e.g. "my-app-prod"
+  
+  plan            String    // MINI, PRO, BUSINESS, ENTERPRISE
+  status          String    // PROVISIONING, ACTIVE, SUSPENDED, DELETED
+  
+  // Resources
+  vcpu            Int
+  ramMb           Int
+  diskGb          Int
+  bandwidth       Int?      // GB/month
+  
+  // Infrastructure
+  nodeId          String?   // Physical node assignment
+  ipAddress       String?
+  
+  // Subscription linkage (bidirectional)
+  subscriptionId  String?
+  
+  // Lifecycle
+  provisionedAt   DateTime?
+  suspendedAt     DateTime?
+  suspendReason   String?
+  
+  // Soft delete
+  deletedAt       DateTime?
+  
+  metadata        Json?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Constraints
+  @@unique([tenantId, slug])
+  @@index([tenantId, status])
+  @@index([status])
+  @@index([nodeId])
+  @@index([subscriptionId]) // Subscription lookup
+}
+
+// ============================================
+// OPS: PROVISIONING & JOBS
+// ============================================
+
+model ProvisioningJob {
+  id             String    @id @default(cuid())
+  tenantId       String?
+  
+  type           String    // cloudpod.provision, subscription.activate, dns.update, etc.
+  queueName      String    // default, priority, background
+  status         String    // PENDING, RUNNING, COMPLETED, FAILED, DEAD_LETTER
+  
+  payload        Json
+  result         Json?
+  errorMessage   String?
+  
+  attempts       Int       @default(0)
+  maxAttempts    Int       @default(3)
+  
+  priority       Int       @default(0)
+  
+  scheduledFor   DateTime?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  failedAt       DateTime?
+  deadLetteredAt DateTime?
+  
+  // Worker tracking
+  workerId       String?
+  lockedAt       DateTime?
+  lockedUntil    DateTime?
+  
+  metadata       Json?
+  
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // Indexes for queue processing
+  @@index([queueName, status, priority])
+  @@index([status, scheduledFor])
+  @@index([tenantId, status])
+  @@index([type, status])
+  @@index([createdAt]) // Stuck job detection
+}
+
+model CoreNode {
+  id              String   @id @default(cuid())
+  hostname        String   @unique // e.g. "SRV1-WEB", "MAIL-CORE"
+  ipAddress       String
+  
+  nodeType        String   // WEB, MAIL, DATABASE, STORAGE, CLOUDPOD
+  status          String   // ONLINE, OFFLINE, MAINTENANCE, DEGRADED
+  
+  // Resources
+  cpuCores        Int?
+  ramMb           Int?
+  diskGb          Int?
+  
+  // Health
+  loadAvg1        Float?
+  loadAvg5        Float?
+  loadAvg15       Float?
+  cpuUsagePct     Float?
+  ramUsagePct     Float?
+  diskUsagePct    Float?
+  
+  lastPingAt      DateTime?
+  lastHealthCheck DateTime?
+  
+  metadata        Json?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([status])
+  @@index([nodeType, status])
+}
+
+// ============================================
+// SHIELD & GUARDIAN SECURITY
+// ============================================
+
+model ShieldEvent {
+  id          String   @id @default(cuid())
+  tenantId    String?
+  
+  eventType   String   // ALLOW, BLOCK, CHALLENGE, RATE_LIMITED
+  ipAddress   String
+  path        String
+  method      String
+  
+  policyId    String?
+  ruleMatched String?
+  
+  userAgent   String?
+  country     String?
+  
+  timestamp   DateTime @default(now())
+
+  @@index([tenantId, timestamp])
+  @@index([eventType, timestamp])
+  @@index([ipAddress, timestamp])
+}
+
+model ShieldPolicy {
+  id          String   @id @default(cuid())
+  tenantId    String
+  
+  name        String
+  enabled     Boolean  @default(true)
+  
+  rules       Json     // WAF rules, rate limits, geo-blocking, etc.
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId, enabled])
+}
+
+model GuardianFinding {
+  id          String   @id @default(cuid())
+  tenantId    String
+  
+  findingType String   // VULN, MISCONFIG, COMPLIANCE, MALWARE
+  severity    String   // CRITICAL, HIGH, MEDIUM, LOW, INFO
+  status      String   // OPEN, ACKNOWLEDGED, REMEDIATED, FALSE_POSITIVE
+  
+  title       String
+  description String
+  
+  resourceType String? // cloudpod, website, database, etc.
+  resourceId   String?
+  
+  remediation  String?
+  
+  detectedAt   DateTime @default(now())
+  acknowledgedAt DateTime?
+  remediatedAt   DateTime?
+  
+  metadata     Json?
+
+  @@index([tenantId, status, severity])
+  @@index([severity, status])
+  @@index([resourceType, resourceId])
+}
+
+// ============================================
+// BACKUPS
+// ============================================
+
+model Backup {
+  id            String   @id @default(cuid())
+  tenantId      String?
+  
+  backupType    String   // DB-CORE, MPANEL-CORE, CLOUDPOD, WEBSITE, MAIL
+  resourceId    String?
+  
+  status        String   // RUNNING, COMPLETED, FAILED
+  
+  sizeBytes     BigInt?
+  location      String?  // S3 path, local path, etc.
+  
+  startedAt     DateTime?
+  completedAt   DateTime?
+  failedAt      DateTime?
+  errorMessage  String?
+  
+  retentionDays Int      @default(30)
+  expiresAt     DateTime?
+  
+  metadata      Json?
+  
+  createdAt     DateTime @default(now())
+
+  @@index([tenantId, backupType, status])
+  @@index([backupType, completedAt])
+  @@index([expiresAt]) // Cleanup old backups
+}
+
+// ============================================
+// IDEMPOTENCY (Webhooks + Critical Operations)
+// ============================================
+
+model IdempotencyKey {
+  id            String   @id @default(cuid())
+  key           String   @unique // Client-provided or webhook event ID
+  
+  operation     String   // stripe.webhook, cloudpod.create, etc.
+  tenantId      String?
+  
+  status        String   // PROCESSING, COMPLETED, FAILED
+  
+  requestHash   String?  // SHA-256 of request body
+  responseData  Json?
+  errorMessage  String?
+  
+  expiresAt     DateTime // Keys expire after 24-48h
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([key])
+  @@index([expiresAt]) // Cleanup expired keys
+}
+
+// ============================================
+// ADD TO EXISTING TENANT MODEL
+// ============================================
+// Add to your existing Tenant model:
+//
+// subscriptions  Subscription[]
+// invoices       Invoice[]
+// cloudPods      CloudPod[]
+// products       Product[]

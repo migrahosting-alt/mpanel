@@ -64,29 +64,26 @@ export default function SystemEvents() {
     unacknowledged: 0,
   });
 
-  // Mock events data
-  const mockEvents: SystemEvent[] = [
-    { id: 'evt-001', timestamp: new Date(Date.now() - 30000).toISOString(), severity: 'info', source: 'api', title: 'API Request Rate Normal', message: 'API request rate has stabilized to normal levels.', acknowledged: true, acknowledgedBy: 'admin@migrahosting.com' },
-    { id: 'evt-002', timestamp: new Date(Date.now() - 60000).toISOString(), severity: 'warning', source: 'server', title: 'High CPU Usage', message: 'Server cpanel-srv1 CPU usage exceeded 80% threshold.', server: 'cpanel-srv1', details: { cpu: 85, threshold: 80 }, acknowledged: false },
-    { id: 'evt-003', timestamp: new Date(Date.now() - 120000).toISOString(), severity: 'error', source: 'database', title: 'Slow Query Detected', message: 'Query exceeded 5 second execution threshold.', details: { query: 'SELECT * FROM orders...', duration: '7.2s' }, acknowledged: false },
-    { id: 'evt-004', timestamp: new Date(Date.now() - 180000).toISOString(), severity: 'critical', source: 'security', title: 'Brute Force Attempt Detected', message: 'Multiple failed login attempts from IP 185.220.101.1 - IP has been blocked.', details: { ip: '185.220.101.1', attempts: 15, blocked: true }, acknowledged: true, acknowledgedBy: 'security@migrahosting.com', acknowledgedAt: new Date(Date.now() - 150000).toISOString() },
-    { id: 'evt-005', timestamp: new Date(Date.now() - 300000).toISOString(), severity: 'info', source: 'provisioning', title: 'Account Provisioned', message: 'Successfully provisioned cPanel account for example.com', details: { domain: 'example.com', server: 'cpanel-srv2', plan: 'Business' }, acknowledged: true },
-    { id: 'evt-006', timestamp: new Date(Date.now() - 400000).toISOString(), severity: 'warning', source: 'network', title: 'High Latency Detected', message: 'Network latency to CloudFlare exceeded 100ms.', details: { latency: '145ms', target: 'cloudflare' }, acknowledged: false },
-    { id: 'evt-007', timestamp: new Date(Date.now() - 500000).toISOString(), severity: 'error', source: 'billing', title: 'Payment Gateway Timeout', message: 'Stripe payment gateway connection timed out after 30 seconds.', details: { gateway: 'stripe', timeout: '30s', retrying: true }, acknowledged: false },
-    { id: 'evt-008', timestamp: new Date(Date.now() - 600000).toISOString(), severity: 'info', source: 'system', title: 'Scheduled Backup Complete', message: 'Daily backup completed successfully for all databases.', details: { databases: 24, size: '15.2GB', duration: '45m' }, acknowledged: true },
-    { id: 'evt-009', timestamp: new Date(Date.now() - 700000).toISOString(), severity: 'critical', source: 'server', title: 'Disk Space Critical', message: 'Server db-core disk usage at 95%. Immediate action required.', server: 'db-core', details: { diskUsage: 95, freeSpace: '12GB', totalSpace: '250GB' }, acknowledged: false },
-    { id: 'evt-010', timestamp: new Date(Date.now() - 800000).toISOString(), severity: 'info', source: 'api', title: 'New API Key Generated', message: 'A new API key was generated for integration purposes.', details: { keyName: 'Production Key', scopes: ['read', 'write'] }, acknowledged: true },
-    { id: 'evt-011', timestamp: new Date(Date.now() - 900000).toISOString(), severity: 'warning', source: 'provisioning', title: 'Provisioning Queue Backlog', message: '15 provisioning jobs pending. Consider scaling workers.', details: { pending: 15, avgWait: '5m' }, acknowledged: false },
-    { id: 'evt-012', timestamp: new Date(Date.now() - 1000000).toISOString(), severity: 'error', source: 'security', title: 'SSL Certificate Expiring', message: 'SSL certificate for api.migrahosting.com expires in 7 days.', details: { domain: 'api.migrahosting.com', expiresIn: '7 days' }, acknowledged: false },
-  ];
-
   const fetchEvents = async () => {
     try {
       setLoading(true);
-      // TODO: Replace with actual API call
-      // const response = await fetch(`${API_BASE}/admin/events?page=${page}&limit=${itemsPerPage}&...`);
+      const token = localStorage.getItem('token');
+      const params = new URLSearchParams();
+      params.append('page', page.toString());
+      params.append('limit', itemsPerPage.toString());
+      if (filter.severity !== 'all') params.append('severity', filter.severity);
+      if (filter.source !== 'all') params.append('source', filter.source);
+      if (filter.acknowledged !== 'all') params.append('acknowledged', filter.acknowledged);
+      if (filter.search) params.append('search', filter.search);
       
-      let filtered = [...mockEvents];
+      const response = await fetch(`${API_BASE}/admin/events?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      if (!response.ok) throw new Error('Failed to fetch events');
+      const data = await response.json();
+      
+      let filtered = data.events || data.data || [];
       
       if (filter.severity !== 'all') {
         filtered = filtered.filter(e => e.severity === filter.severity);
@@ -108,21 +105,24 @@ export default function SystemEvents() {
         );
       }
 
-      setTotalEvents(filtered.length);
-      setTotalPages(Math.ceil(filtered.length / itemsPerPage));
-      setEvents(filtered.slice((page - 1) * itemsPerPage, page * itemsPerPage));
+      setTotalEvents(data.total || filtered.length);
+      setTotalPages(Math.ceil((data.total || filtered.length) / itemsPerPage));
+      setEvents(filtered);
 
-      // Calculate stats from all mock events
+      // Calculate stats from real data
+      const allEvents = data.allEvents || filtered;
       setStats({
-        total: mockEvents.length,
-        info: mockEvents.filter(e => e.severity === 'info').length,
-        warning: mockEvents.filter(e => e.severity === 'warning').length,
-        error: mockEvents.filter(e => e.severity === 'error').length,
-        critical: mockEvents.filter(e => e.severity === 'critical').length,
-        unacknowledged: mockEvents.filter(e => !e.acknowledged).length,
+        total: allEvents.length,
+        info: allEvents.filter((e: SystemEvent) => e.severity === 'info').length,
+        warning: allEvents.filter((e: SystemEvent) => e.severity === 'warning').length,
+        error: allEvents.filter((e: SystemEvent) => e.severity === 'error').length,
+        critical: allEvents.filter((e: SystemEvent) => e.severity === 'critical').length,
+        unacknowledged: allEvents.filter((e: SystemEvent) => !e.acknowledged).length,
       });
     } catch (err) {
       console.error('Failed to fetch events:', err);
+      setEvents([]);
+      setStats({ total: 0, info: 0, warning: 0, error: 0, critical: 0, unacknowledged: 0 });
     } finally {
       setLoading(false);
     }

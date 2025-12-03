@@ -23,6 +23,7 @@ import {
   UserGroupIcon,
   Bars3Icon,
   XMarkIcon,
+  CloudIcon,
 } from '@heroicons/react/24/outline';
 import CommandPalette from './CommandPalette';
 
@@ -40,6 +41,14 @@ const getNavigation = (isAdmin, hasPermission) => {
     { name: 'Provisioning', href: '/provisioning', icon: CogIcon, section: 'admin', badge: 'Auto', permission: 'provisioning.read' },
     { name: 'Migra Shield', href: '/admin/shield', icon: ShieldCheckIcon, section: 'admin', badge: 'Zero Trust', permission: 'platform:shield:manage' },
     { name: 'Role Management', href: '/admin/roles', icon: UserGroupIcon, section: 'admin', badge: 'RBAC', permission: 'roles.read' },
+  ];
+
+  const opsNav = [
+    { name: 'CloudPods', href: '/admin/cloudpods', icon: CubeIcon, section: 'ops', permission: 'cloudpods.view' },
+    { name: 'Jobs', href: '/admin/jobs', icon: ClockIcon, section: 'ops', permission: 'jobs.view' },
+    { name: 'System Health', href: '/admin/system-health', icon: ChartBarIcon, section: 'ops', permission: 'system.health' },
+    { name: 'Audit Log', href: '/admin/audit', icon: DocumentTextIcon, section: 'ops', permission: 'audit.read' },
+    { name: 'System Events', href: '/admin/system-events', icon: CommandLineIcon, section: 'ops', permission: 'events.read' },
   ];
 
   const hostingNav = [
@@ -93,7 +102,7 @@ const getNavigation = (isAdmin, hasPermission) => {
   };
 
   const allNav = isAdmin 
-    ? [...baseNav, ...filterByPermission(adminNav), ...filterByPermission(hostingNav), ...premiumNav, ...filterByPermission(billingNav), ...securityNav]
+    ? [...baseNav, ...filterByPermission(adminNav), ...filterByPermission(opsNav), ...filterByPermission(hostingNav), ...premiumNav, ...filterByPermission(billingNav), ...securityNav]
     : [...baseNav, ...filterByPermission(hostingNav), ...filterByPermission(billingNav), ...securityNav];
 
   return allNav;
@@ -109,7 +118,8 @@ const getSections = (isAdmin) => {
 
   return isAdmin ? { 
     main: 'Overview', 
-    admin: 'Administration', 
+    admin: 'Administration',
+    ops: 'Operations',
     hosting: 'Hosting',
     premium: 'Enterprise Features',
     billing: 'Billing',

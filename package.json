@@ -38,6 +38,12 @@
     "seed:products": "tsx prisma/seedProductsFromConfig.ts",
     "shield:seed": "tsx scripts/shield/seedShieldPolicy.ts",
     "shield:smoke": "tsx scripts/shield/shieldSmokeTest.ts",
+    "smoke-test": "tsx scripts/smoke-test.ts",
+    "smoke-test:production": "tsx scripts/smoke-test.ts --env=production",
+    "smoke-test:staging": "tsx scripts/smoke-test.ts --env=staging",
+    "db:backup": "bash scripts/backup.sh",
+    "db:test": "tsx scripts/test-db-connection.ts",
+    "cleanup:idempotency": "tsx scripts/cleanup-idempotency-keys.ts",
     "postinstall": "npm --prefix frontend install"
   },
   "keywords": [

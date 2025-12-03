@@ -387,7 +387,7 @@ export async function updateUsageAfterScale(
   const ramDelta = newRamMb - currentRamMb;
 
   if (coresDelta === 0 && ramDelta === 0) {
-    return; // No change
+    return undefined; // No change
   }
 
   return prisma.cloudPodQuota.update({

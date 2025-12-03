@@ -1380,3 +1380,86 @@ model CloudPodHook {
   @@index([event, isActive])
   @@map("cloud_pod_hooks")
 }
+
+// ============================================
+// PHASE 3: ADDITIVE CLOUDPODS PROVISIONING
+// ============================================
+
+/// CloudPods Nodes - Proxmox/host nodes available for provisioning
+model CloudPodNode {
+  id             Int      @id @default(autoincrement())
+  name           String
+  provider       String
+  apiUrl         String   @map("api_url")
+  nodeName       String   @map("node_name")
+  status         String   @default("active")
+  totalCpuCores  Int      @map("total_cpu_cores")
+  totalMemoryMb  Int      @map("total_memory_mb")
+  totalDiskGb    Int      @map("total_disk_gb")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  allocations CloudPodAllocation[]
+
+  @@index([status])
+  @@index([provider])
+  @@map("cloud_pod_nodes")
+}
+
+/// CloudPods Allocations - Tracks resource usage per node
+model CloudPodAllocation {
+  id            Int      @id @default(autoincrement())
+  nodeId        Int      @map("node_id")
+  usedCpuCores  Int      @default(0) @map("used_cpu_cores")
+  usedMemoryMb  Int      @default(0) @map("used_memory_mb")
+  usedDiskGb    Int      @default(0) @map("used_disk_gb")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  node CloudPodNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@index([nodeId])
+  @@map("cloud_pod_allocations")
+}
+
+/// CloudPods Metrics - Runtime metrics per pod
+model CloudPodMetric {
+  id          Int      @id @default(autoincrement())
+  podId       String   @map("pod_id") @db.Uuid
+  cpuUsage    Decimal  @map("cpu_usage") @db.Decimal(5, 2)
+  memoryUsage Decimal  @map("memory_usage") @db.Decimal(5, 2)
+  diskUsage   Decimal  @map("disk_usage") @db.Decimal(5, 2)
+  collectedAt DateTime @default(now()) @map("collected_at")
+
+  @@index([podId, collectedAt(sort: Desc)])
+  @@map("cloud_pod_metrics")
+}
+
+// ============================================
+// PHASE 3: ADDITIVE MONITORING TELEMETRY
+// ============================================
+
+/// Monitoring Service Status - Health checks for services
+model MonitoringServiceStatus {
+  id          Int      @id @default(autoincrement())
+  serviceName String   @map("service_name")
+  status      String
+  latencyMs   Int?     @map("latency_ms")
+  checkedAt   DateTime @default(now()) @map("checked_at")
+
+  @@index([serviceName, checkedAt(sort: Desc)])
+  @@map("monitoring_service_status")
+}
+
+/// Monitoring Slow Queries - Tracks slow DB queries
+model MonitoringSlowQuery {
+  id             Int      @id @default(autoincrement())
+  queryHash      String   @map("query_hash")
+  sampleQuery    String   @map("sample_query")
+  avgDurationMs  Decimal  @map("avg_duration_ms") @db.Decimal(10, 2)
+  calls          BigInt
+  lastSeenAt     DateTime @default(now()) @map("last_seen_at")
+
+  @@index([queryHash])
+  @@index([lastSeenAt(sort: Desc)])
+  @@map("monitoring_slow_queries")
+}
